@@ -55,6 +55,10 @@
     <string name="save">SAVE</string>
     <string name="cancel">CANCEL</string>
     <string name="delete">DELETE</string>
+    <string name="title_manual_input">Manual Input</string>
+    <string name="title_display_entry">Display Entry</string>
+    <string name="title_map_display">Map Display</string>
+
 
     <string-array name="input">
         <item>Manual Entry</item>

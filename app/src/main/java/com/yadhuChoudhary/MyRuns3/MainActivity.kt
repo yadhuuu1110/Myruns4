@@ -13,113 +13,125 @@ import androidx.fragment.app.Fragment
 import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.tabs.TabLayout
 import com.google.android.material.tabs.TabLayoutMediator
-import com.google.android.material.tabs.TabLayoutMediator.TabConfigurationStrategy
-import java.util.ArrayList
+
 class MainActivity : AppCompatActivity() {
+
     private lateinit var fragmentA: FragmentA
     private lateinit var fragmentB: FragmentB
     private lateinit var fragmentC: FragmentC
     private lateinit var viewPager2: ViewPager2
     private lateinit var tabLayout: TabLayout
-    private lateinit var myMyFragmentStateAdapter: MyFragmentStateAdapter
-    private lateinit var fragments: ArrayList<Fragment>
-    private val tabTitles = arrayOf("START", "HISTORY", "SETTINGS") //Tab titles
-    private lateinit var tabConfigurationStrategy: TabConfigurationStrategy
+    private lateinit var myAdapter: MyFragmentStateAdapter
     private lateinit var tabLayoutMediator: TabLayoutMediator
 
     private lateinit var requestPermissionsLauncher: ActivityResultLauncher<Array<String>>
+
+    private val tabTitles = arrayOf("START", "HISTORY", "SETTINGS")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        viewPager2 = findViewById(R.id.viewpager)
-        tabLayout = findViewById(R.id.tab)
-
         fragmentA = FragmentA()
         fragmentB = FragmentB()
         fragmentC = FragmentC()
 
-        fragments = ArrayList()
-        fragments.add(fragmentA)
-        fragments.add(fragmentB)
-        fragments.add(fragmentC)
+        val fragments = arrayListOf<Fragment>(fragmentA, fragmentB, fragmentC)
 
-        myMyFragmentStateAdapter = MyFragmentStateAdapter(this, fragments)
-        viewPager2.adapter = myMyFragmentStateAdapter
+        viewPager2 = findViewById(R.id.viewpager)
+        tabLayout = findViewById(R.id.tab)
 
-        // Set offscreen page limit to keep all fragments in memory
+        myAdapter = MyFragmentStateAdapter(this, fragments)
+        viewPager2.adapter = myAdapter
         viewPager2.offscreenPageLimit = 2
 
-        tabConfigurationStrategy = TabConfigurationStrategy {
-                tab: TabLayout.Tab, position: Int ->
-            tab.text = tabTitles[position] }
-        tabLayoutMediator = TabLayoutMediator(tabLayout, viewPager2, tabConfigurationStrategy)
+        tabLayoutMediator = TabLayoutMediator(tabLayout, viewPager2) { tab, position ->
+            tab.text = tabTitles[position]
+        }
         tabLayoutMediator.attach()
 
-        // Setup permission launcher
         setupPermissionLauncher()
-
-        // Request all permissions on startup
-        requestAllPermissions()
+        requestAllPermissions()   // **IMPORTANT FIX**
     }
 
     private fun setupPermissionLauncher() {
-        requestPermissionsLauncher = registerForActivityResult(
-            ActivityResultContracts.RequestMultiplePermissions()
-        ) { permissions ->
-            val allGranted = permissions.values.all { it }
+        requestPermissionsLauncher =
+            registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
 
-            if (allGranted) {
-                Toast.makeText(this, "All permissions granted", Toast.LENGTH_SHORT).show()
-            } else {
-                val deniedPermissions = permissions.filter { !it.value }.keys
-                Toast.makeText(
-                    this,
-                    "Some permissions were denied: ${deniedPermissions.joinToString()}",
-                    Toast.LENGTH_LONG
-                ).show()
+                val denied = permissions.filter { !it.value }.keys
+                if (denied.isEmpty()) {
+                    Toast.makeText(this, "All permissions granted.", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(
+                        this,
+                        "Some permissions denied: ${denied.joinToString()}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
             }
-        }
     }
 
     private fun requestAllPermissions() {
-        val permissionsToRequest = mutableListOf<String>()
+        val required = mutableListOf<String>()
 
-        // Check camera permission
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
-            != PackageManager.PERMISSION_GRANTED
+        // 🔥 REQUIRED FOR TRACKING SERVICE
+        if (!hasPermission(Manifest.permission.ACCESS_FINE_LOCATION))
+            required.add(Manifest.permission.ACCESS_FINE_LOCATION)
+
+        if (!hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION))
+            required.add(Manifest.permission.ACCESS_COARSE_LOCATION)
+
+        // Android 14+ foreground service types
+        if (Build.VERSION.SDK_INT >= 34 &&
+            !hasPermission(Manifest.permission.FOREGROUND_SERVICE_LOCATION)
         ) {
-            permissionsToRequest.add(Manifest.permission.CAMERA)
+            required.add(Manifest.permission.FOREGROUND_SERVICE_LOCATION)
         }
 
-        // Check storage/media permissions based on Android version
-        val storagePermissions = getRequiredStoragePermissions()
-        for (permission in storagePermissions) {
-            if (ContextCompat.checkSelfPermission(this, permission)
-                != PackageManager.PERMISSION_GRANTED
-            ) {
-                permissionsToRequest.add(permission)
-            }
+        if (!hasPermission(Manifest.permission.FOREGROUND_SERVICE)) {
+            required.add(Manifest.permission.FOREGROUND_SERVICE)
         }
 
-        // Request permissions if any are missing
-        if (permissionsToRequest.isNotEmpty()) {
-            requestPermissionsLauncher.launch(permissionsToRequest.toTypedArray())
+
+        // Notifications (Android 13+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            !hasPermission(Manifest.permission.POST_NOTIFICATIONS)
+        ) {
+            required.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+
+        // BODY SENSORS (for automatic activity detection mode)
+        if (!hasPermission(Manifest.permission.BODY_SENSORS))
+            required.add(Manifest.permission.BODY_SENSORS)
+
+        // OPTIONAL: Camera if your app uses it
+        if (!hasPermission(Manifest.permission.CAMERA))
+            required.add(Manifest.permission.CAMERA)
+
+        // Storage/media depending on Android version
+        required += getStoragePermissions().filter { !hasPermission(it) }
+
+        if (required.isNotEmpty()) {
+            requestPermissionsLauncher.launch(required.toTypedArray())
         }
     }
 
-    private fun getRequiredStoragePermissions(): Array<String> {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            // Android 13+ (API 33+)
-            arrayOf(
+    private fun hasPermission(permission: String): Boolean {
+        return ContextCompat.checkSelfPermission(
+            this,
+            permission
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun getStoragePermissions(): List<String> {
+        return if (Build.VERSION.SDK_INT >= 33) {
+            listOf(
                 Manifest.permission.READ_MEDIA_IMAGES,
                 Manifest.permission.READ_MEDIA_VIDEO,
                 Manifest.permission.READ_MEDIA_AUDIO
             )
         } else {
-            // Android 12 and below
-            arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+            listOf(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
     }
 
