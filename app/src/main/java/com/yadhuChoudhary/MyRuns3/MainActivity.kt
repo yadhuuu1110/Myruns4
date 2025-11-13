@@ -51,13 +51,12 @@ class MainActivity : AppCompatActivity() {
         tabLayoutMediator.attach()
 
         setupPermissionLauncher()
-        requestAllPermissions()   // **IMPORTANT FIX**
+        requestAllPermissions()
     }
 
     private fun setupPermissionLauncher() {
         requestPermissionsLauncher =
             registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
-
                 val denied = permissions.filter { !it.value }.keys
                 if (denied.isEmpty()) {
                     Toast.makeText(this, "All permissions granted.", Toast.LENGTH_SHORT).show()
@@ -74,24 +73,23 @@ class MainActivity : AppCompatActivity() {
     private fun requestAllPermissions() {
         val required = mutableListOf<String>()
 
-        // 🔥 REQUIRED FOR TRACKING SERVICE
+        // Location
         if (!hasPermission(Manifest.permission.ACCESS_FINE_LOCATION))
             required.add(Manifest.permission.ACCESS_FINE_LOCATION)
-
         if (!hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION))
             required.add(Manifest.permission.ACCESS_COARSE_LOCATION)
 
-        // Android 14+ foreground service types
+        // Android 14+ foreground service location
         if (Build.VERSION.SDK_INT >= 34 &&
             !hasPermission(Manifest.permission.FOREGROUND_SERVICE_LOCATION)
         ) {
             required.add(Manifest.permission.FOREGROUND_SERVICE_LOCATION)
         }
 
+        // Foreground service
         if (!hasPermission(Manifest.permission.FOREGROUND_SERVICE)) {
             required.add(Manifest.permission.FOREGROUND_SERVICE)
         }
-
 
         // Notifications (Android 13+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -100,15 +98,7 @@ class MainActivity : AppCompatActivity() {
             required.add(Manifest.permission.POST_NOTIFICATIONS)
         }
 
-        // BODY SENSORS (for automatic activity detection mode)
-        if (!hasPermission(Manifest.permission.BODY_SENSORS))
-            required.add(Manifest.permission.BODY_SENSORS)
-
-        // OPTIONAL: Camera if your app uses it
-        if (!hasPermission(Manifest.permission.CAMERA))
-            required.add(Manifest.permission.CAMERA)
-
-        // Storage/media depending on Android version
+        // Storage / media
         required += getStoragePermissions().filter { !hasPermission(it) }
 
         if (required.isNotEmpty()) {
@@ -124,12 +114,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun getStoragePermissions(): List<String> {
-        return if (Build.VERSION.SDK_INT >= 33) {
-            listOf(
-                Manifest.permission.READ_MEDIA_IMAGES,
-                Manifest.permission.READ_MEDIA_VIDEO,
-                Manifest.permission.READ_MEDIA_AUDIO
-            )
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            listOf(Manifest.permission.READ_MEDIA_IMAGES)
         } else {
             listOf(Manifest.permission.READ_EXTERNAL_STORAGE)
         }

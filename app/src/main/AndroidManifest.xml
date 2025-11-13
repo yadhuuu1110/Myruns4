@@ -2,24 +2,35 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Permissions -->
+    <!-- Internet for maps + network -->
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Location for GPS tracking -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-
-    <!-- REQUIRED for Android 14 foreground services -->
+    <!-- Foreground service for tracking -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
+    <!-- Android 14+ foreground location service -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 
-    <!-- Required for accelerometer activity detection -->
-    <uses-permission android:name="android.permission.BODY_SENSORS" />
+    <!-- Notifications (Android 13+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- ✅ STORAGE PERMISSIONS -->
+
+    <!-- For Android 12 and below -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <!-- For Android 13+ (images from gallery) -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <!-- Add video/audio if needed:
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    -->
 
     <application
         android:allowBackup="true"
@@ -37,8 +48,7 @@
 
         <activity
             android:name=".MainActivity"
-            android:exported="true"
-            android:label="@string/app_name">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -46,7 +56,7 @@
         </activity>
 
         <activity
-            android:name=".ManualInputActivity"
+            android:name=".ManualActivity"
             android:label="@string/title_manual_input"
             android:parentActivityName=".MainActivity" />
 
@@ -65,7 +75,7 @@
             android:label="Profile"
             android:parentActivityName=".MainActivity" />
 
-        <!-- Tracking Service -->
+        <!-- Foreground Tracking Service -->
         <service
             android:name=".TrackingService"
             android:enabled="true"
