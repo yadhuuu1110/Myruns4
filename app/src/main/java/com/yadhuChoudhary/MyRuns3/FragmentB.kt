@@ -56,7 +56,8 @@ class FragmentB : Fragment() {
             val intent = if (exercise.inputType == Constants.INPUT_TYPE_MANUAL) {
                 Intent(requireContext(), DisplayEntryActivity::class.java)
             } else {
-                Intent(requireContext(), MapActivity::class.java)
+                // ✅ FIXED: Changed from MapActivity to MapDisplayActivity
+                Intent(requireContext(), MapDisplayActivity::class.java)
             }
 
             intent.putExtra(Constants.EXTRA_EXERCISE_ID, exercise.id)

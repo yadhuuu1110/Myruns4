@@ -9,6 +9,7 @@ import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.Spinner
 import androidx.fragment.app.Fragment
+
 class FragmentA : Fragment() {
 
     override fun onCreateView(
@@ -23,8 +24,7 @@ class FragmentA : Fragment() {
         ArrayAdapter.createFromResource(
             requireContext(), R.array.input,
             android.R.layout.simple_spinner_item
-        ).also {
-                adapter ->
+        ).also { adapter ->
             adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
             spinnerInput.adapter = adapter
         }
@@ -33,8 +33,7 @@ class FragmentA : Fragment() {
             requireContext(),
             R.array.activity,
             android.R.layout.simple_spinner_item
-        ).also {
-                adapter ->
+        ).also { adapter ->
             adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
             spinnerActivity.adapter = adapter
         }
@@ -44,12 +43,15 @@ class FragmentA : Fragment() {
             val activityType = spinnerActivity.selectedItemPosition
 
             if (inputType == Constants.INPUT_TYPE_MANUAL) {
+                // Manual Entry - open ManualActivity
                 val intent = Intent(requireContext(), ManualActivity::class.java)
                 intent.putExtra(Constants.EXTRA_INPUT_TYPE, inputType)
                 intent.putExtra(Constants.EXTRA_ACTIVITY_TYPE, activityType)
                 startActivity(intent)
             } else {
-                val intent = Intent(requireContext(), MapActivity::class.java)
+                // GPS or Automatic - open MapDisplayActivity
+                // ✅ FIXED: Changed from MapActivity to MapDisplayActivity
+                val intent = Intent(requireContext(), MapDisplayActivity::class.java)
                 intent.putExtra(Constants.EXTRA_INPUT_TYPE, inputType)
                 intent.putExtra(Constants.EXTRA_ACTIVITY_TYPE, activityType)
                 startActivity(intent)

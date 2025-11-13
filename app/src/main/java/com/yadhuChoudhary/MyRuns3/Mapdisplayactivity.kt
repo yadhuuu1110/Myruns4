@@ -18,17 +18,15 @@ import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.*
 import kotlinx.coroutines.launch
-import java.io.ByteArrayInputStream
-import java.io.ObjectInputStream
 
 class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
 
     companion object {
         private const val LOCATION_PERMISSION_REQUEST_CODE = 100
-        private const val DEFAULT_ZOOM = 15f
+        private const val DEFAULT_ZOOM = 17f
     }
 
-    private lateinit var googleMap: GoogleMap
+    private var googleMap: GoogleMap? = null
     private var polyline: Polyline? = null
     private var startMarker: Marker? = null
     private var endMarker: Marker? = null
@@ -65,6 +63,7 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
     private var isLiveMode = false
     private var exerciseId: Long = -1
     private lateinit var repository: ExerciseRepository
+    private var hasZoomedToLocation = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -78,7 +77,6 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
         repository = ExerciseRepository(database.exerciseDao())
 
         initializeViews()
-        checkLocationPermission()
 
         // Determine mode
         exerciseId = intent.getLongExtra(Constants.EXTRA_EXERCISE_ID, -1)
@@ -104,18 +102,42 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
         btnCancel = findViewById(R.id.btn_map_cancel)
     }
 
-    private fun checkLocationPermission() {
-        if (ContextCompat.checkSelfPermission(
-                this,
-                android.Manifest.permission.ACCESS_FINE_LOCATION
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION),
-                LOCATION_PERMISSION_REQUEST_CODE
-            )
+    override fun onMapReady(map: GoogleMap) {
+        googleMap = map
+
+        googleMap?.apply {
+            uiSettings.apply {
+                isZoomControlsEnabled = true
+                isCompassEnabled = true
+                isMyLocationButtonEnabled = true
+            }
         }
+
+        // Enable my location if permission granted
+        if (checkLocationPermission()) {
+            enableMyLocation()
+        } else {
+            requestLocationPermission()
+        }
+
+        if (!isLiveMode) {
+            loadHistoryEntry()
+        }
+    }
+
+    private fun checkLocationPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            this,
+            android.Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun requestLocationPermission() {
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION),
+            LOCATION_PERMISSION_REQUEST_CODE
+        )
     }
 
     override fun onRequestPermissionsResult(
@@ -127,26 +149,11 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
         if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 enableMyLocation()
+                Toast.makeText(this, "Location permission granted. GPS tracking started!", Toast.LENGTH_SHORT).show()
             } else {
-                Toast.makeText(this, "Location permission required", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Location permission required for GPS tracking", Toast.LENGTH_LONG).show()
                 finish()
             }
-        }
-    }
-
-    override fun onMapReady(map: GoogleMap) {
-        googleMap = map
-
-        googleMap.uiSettings.apply {
-            isZoomControlsEnabled = true
-            isCompassEnabled = true
-            isMyLocationButtonEnabled = true
-        }
-
-        enableMyLocation()
-
-        if (!isLiveMode) {
-            loadHistoryEntry()
         }
     }
 
@@ -156,7 +163,21 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
                 android.Manifest.permission.ACCESS_FINE_LOCATION
             ) == PackageManager.PERMISSION_GRANTED
         ) {
-            googleMap.isMyLocationEnabled = true
+            googleMap?.isMyLocationEnabled = true
+
+            // Get last known location and zoom to it
+            if (isLiveMode && !hasZoomedToLocation) {
+                val fusedLocationClient = com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(this)
+                fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                    location?.let {
+                        val currentLatLng = LatLng(it.latitude, it.longitude)
+                        googleMap?.animateCamera(
+                            CameraUpdateFactory.newLatLngZoom(currentLatLng, DEFAULT_ZOOM)
+                        )
+                        hasZoomedToLocation = true
+                    }
+                }
+            }
         }
     }
 
@@ -190,6 +211,7 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
 
     private fun setupHistoryDisplay() {
         btnSave.isEnabled = false
+        btnSave.visibility = android.view.View.GONE
         btnCancel.text = "Back"
     }
 
@@ -218,13 +240,16 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
             "Unknown"
         }
 
+        val duration = UnitConverter.formatDuration(entry.duration)
+        val distance = UnitConverter.formatDistance(entry.distance, this)
+
         val statsText = buildString {
             append("Type: $activityType\n")
+            append("Duration: $duration\n")
+            append("Distance: $distance\n")
             append("Avg Speed: ${String.format("%.2f", entry.avgSpeed)} mph\n")
-            append("Cur Speed: ${String.format("%.2f", entry.avgSpeed)} mph\n")
-            append("Distance: ${String.format("%.2f", entry.distance)} miles\n")
             append("Climb: ${String.format("%.0f", entry.climb)} feet\n")
-            append("Calories: ${entry.calorie.toInt()} cals\n")
+            append("Calories: ${entry.calorie.toInt()} cals")
         }
 
         tvTypeStats.text = statsText
@@ -232,7 +257,9 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
 
     private fun updateMap(entry: ExerciseEntry) {
         entry.locationList?.let { byteArray ->
-            val locations = deserializeLocationList(byteArray)
+            if (byteArray.isEmpty()) return
+
+            val locations = LocationUtils.deserializeLocationList(byteArray)
 
             if (locations.isEmpty()) return
 
@@ -241,67 +268,69 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
             endMarker?.remove()
             polyline?.remove()
 
-            // Add start marker
-            startMarker = googleMap.addMarker(
+            // Add start marker (GREEN)
+            startMarker = googleMap?.addMarker(
                 MarkerOptions()
                     .position(locations.first())
                     .title("Start")
                     .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN))
             )
 
-            // Add end marker
+            // Add end marker (RED) - only if we have more than one location
             if (locations.size > 1) {
-                endMarker = googleMap.addMarker(
+                endMarker = googleMap?.addMarker(
                     MarkerOptions()
                         .position(locations.last())
-                        .title("End")
+                        .title("Current")
                         .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED))
                 )
             }
 
-            // Draw polyline
-            polyline = googleMap.addPolyline(
+            // Draw polyline (BLUE LINE)
+            polyline = googleMap?.addPolyline(
                 PolylineOptions()
                     .addAll(locations)
                     .color(Color.BLUE)
                     .width(10f)
             )
 
-            // Move camera to show the entire route
-            if (locations.size > 1) {
+            // Move camera to show the entire route (only if not manually zoomed)
+            if (locations.size > 1 && !hasZoomedToLocation) {
                 val builder = LatLngBounds.Builder()
                 locations.forEach { builder.include(it) }
                 val bounds = builder.build()
                 val padding = 100
-                googleMap.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, padding))
-            } else {
-                googleMap.animateCamera(
+                googleMap?.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, padding))
+                hasZoomedToLocation = true
+            } else if (locations.size == 1 && !hasZoomedToLocation) {
+                googleMap?.animateCamera(
                     CameraUpdateFactory.newLatLngZoom(locations.first(), DEFAULT_ZOOM)
                 )
+                hasZoomedToLocation = true
             }
         }
     }
 
     private fun displayHistoryRoute(entry: ExerciseEntry) {
         entry.locationList?.let { byteArray ->
-            val locations = deserializeLocationList(byteArray)
+            val locations = LocationUtils.deserializeLocationList(byteArray)
 
             if (locations.isEmpty()) {
-                Toast.makeText(this, "No location data available", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "No GPS data available for this entry", Toast.LENGTH_SHORT).show()
                 return
             }
 
-            // Add start marker
-            googleMap.addMarker(
+            // Add start marker (GREEN)
+            googleMap?.addMarker(
                 MarkerOptions()
                     .position(locations.first())
                     .title("Start")
                     .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN))
             )
 
-            // Add end marker
+            // Add end marker (RED)
             if (locations.size > 1) {
-                googleMap.addMarker(
+                googleMap?.addMarker(
                     MarkerOptions()
                         .position(locations.last())
                         .title("End")
@@ -309,25 +338,27 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
                 )
             }
 
-            // Draw polyline
-            googleMap.addPolyline(
+            // Draw polyline (BLUE LINE)
+            googleMap?.addPolyline(
                 PolylineOptions()
                     .addAll(locations)
                     .color(Color.BLUE)
                     .width(10f)
             )
 
-            // Fit bounds
-            val builder = LatLngBounds.Builder()
-            locations.forEach { builder.include(it) }
-            val bounds = builder.build()
-            val padding = 100
-            googleMap.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, padding))
+            // Fit bounds to show entire route
+            if (locations.size > 1) {
+                val builder = LatLngBounds.Builder()
+                locations.forEach { builder.include(it) }
+                val bounds = builder.build()
+                val padding = 100
+                googleMap?.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, padding))
+            } else {
+                googleMap?.moveCamera(
+                    CameraUpdateFactory.newLatLngZoom(locations.first(), DEFAULT_ZOOM)
+                )
+            }
         }
-    }
-
-    private fun deserializeLocationList(byteArray: ByteArray): List<LatLng> {
-        return LocationUtils.deserializeLocationList(byteArray)
     }
 
     private fun setupButtons() {
@@ -348,12 +379,21 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
 
     private fun saveExercise() {
         trackingService?.getCurrentEntry()?.let { entry ->
+            if (entry.distance == 0.0 && entry.duration == 0.0) {
+                Toast.makeText(
+                    this,
+                    "No tracking data recorded yet. Please wait for GPS signal.",
+                    Toast.LENGTH_LONG
+                ).show()
+                return
+            }
+
             lifecycleScope.launch {
                 try {
                     repository.insert(entry)
                     Toast.makeText(
                         this@MapDisplayActivity,
-                        "Exercise saved successfully",
+                        "Exercise saved successfully!",
                         Toast.LENGTH_SHORT
                     ).show()
                     stopTracking()
@@ -380,8 +420,20 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
     override fun onDestroy() {
         super.onDestroy()
         if (isBound) {
-            unbindService(serviceConnection)
+            try {
+                unbindService(serviceConnection)
+            } catch (e: Exception) {
+                // Service was already unbound
+            }
             isBound = false
         }
+    }
+
+    override fun onSupportNavigateUp(): Boolean {
+        if (isLiveMode) {
+            stopTracking()
+        }
+        finish()
+        return true
     }
 }
