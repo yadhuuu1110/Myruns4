@@ -6,100 +6,52 @@ import java.io.*
 object LocationUtils {
 
     /**
-     * Serialize a list of LatLng coordinates to ByteArray for database storage
+     * Serializes a list of LatLng to ByteArray
      */
     fun serializeLocationList(locations: List<LatLng>): ByteArray {
-        return try {
-            val byteArrayOutputStream = ByteArrayOutputStream()
-            val objectOutputStream = ObjectOutputStream(byteArrayOutputStream)
+        val byteArrayOutputStream = ByteArrayOutputStream()
+        val objectOutputStream = ObjectOutputStream(byteArrayOutputStream)
 
-            // Convert LatLng to serializable format
-            val serializableList = ArrayList<SerializableLatLng>()
-            locations.forEach { latLng ->
-                serializableList.add(SerializableLatLng(latLng.latitude, latLng.longitude))
-            }
+        // Write the size of the list
+        objectOutputStream.writeInt(locations.size)
 
-            objectOutputStream.writeObject(serializableList)
-            objectOutputStream.close()
-            byteArrayOutputStream.toByteArray()
-        } catch (e: Exception) {
-            e.printStackTrace()
-            ByteArray(0)
+        // Write each LatLng
+        for (location in locations) {
+            objectOutputStream.writeDouble(location.latitude)
+            objectOutputStream.writeDouble(location.longitude)
         }
+
+        objectOutputStream.close()
+        return byteArrayOutputStream.toByteArray()
     }
 
     /**
-     * Deserialize ByteArray back to list of LatLng coordinates
+     * Deserializes ByteArray to a list of LatLng
      */
-    fun deserializeLocationList(byteArray: ByteArray): List<LatLng> {
-        if (byteArray.isEmpty()) return emptyList()
+    fun deserializeLocationList(data: ByteArray): List<LatLng> {
+        if (data.isEmpty()) return emptyList()
 
-        return try {
-            val byteArrayInputStream = ByteArrayInputStream(byteArray)
-            val objectInputStream = ObjectInputStream(byteArrayInputStream)
+        val byteArrayInputStream = ByteArrayInputStream(data)
+        val objectInputStream = ObjectInputStream(byteArrayInputStream)
 
-            @Suppress("UNCHECKED_CAST")
-            val serializableList = objectInputStream.readObject() as ArrayList<SerializableLatLng>
+        val locations = mutableListOf<LatLng>()
+
+        try {
+            // Read the size of the list
+            val size = objectInputStream.readInt()
+
+            // Read each LatLng
+            for (i in 0 until size) {
+                val latitude = objectInputStream.readDouble()
+                val longitude = objectInputStream.readDouble()
+                locations.add(LatLng(latitude, longitude))
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        } finally {
             objectInputStream.close()
-
-            // Convert back to LatLng
-            serializableList.map { LatLng(it.latitude, it.longitude) }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            emptyList()
-        }
-    }
-
-    /**
-     * Calculate total distance from a list of coordinates
-     * @return distance in miles
-     */
-    fun calculateTotalDistance(locations: List<LatLng>): Double {
-        if (locations.size < 2) return 0.0
-
-        var totalDistance = 0.0
-        for (i in 0 until locations.size - 1) {
-            val results = FloatArray(1)
-            android.location.Location.distanceBetween(
-                locations[i].latitude,
-                locations[i].longitude,
-                locations[i + 1].latitude,
-                locations[i + 1].longitude,
-                results
-            )
-            totalDistance += results[0] / 1609.34 // Convert meters to miles
         }
 
-        return totalDistance
-    }
-
-    /**
-     * Calculate elevation gain from a list of coordinates with altitude
-     * @return climb in feet
-     */
-    fun calculateClimb(altitudes: List<Double>): Double {
-        if (altitudes.size < 2) return 0.0
-
-        var totalClimb = 0.0
-        for (i in 0 until altitudes.size - 1) {
-            val change = altitudes[i + 1] - altitudes[i]
-            if (change > 0) {
-                totalClimb += change * 3.28084 // Convert meters to feet
-            }
-        }
-
-        return totalClimb
-    }
-
-    /**
-     * Data class for serializable LatLng
-     */
-    data class SerializableLatLng(
-        val latitude: Double,
-        val longitude: Double
-    ) : Serializable {
-        companion object {
-            private const val serialVersionUID = 1L
-        }
+        return locations
     }
 }

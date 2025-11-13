@@ -1,12 +1,25 @@
 package com.yadhuChoudhary.MyRuns3
 
 object Constants {
-    // Input Types
+    // SharedPreferences
+    const val PREFS_NAME = "MyRunsPrefs"
+    const val PREF_UNIT = "unit_preference"
+
+    // Unit types
+    const val UNIT_KILOMETERS = 0
+    const val UNIT_MILES = 1
+
+    // Input types
     const val INPUT_TYPE_MANUAL = 0
     const val INPUT_TYPE_GPS = 1
     const val INPUT_TYPE_AUTOMATIC = 2
 
-    // Activity Types
+    // Intent extras
+    const val EXTRA_EXERCISE_ID = "exercise_id"
+    const val EXTRA_INPUT_TYPE = "input_type"
+    const val EXTRA_ACTIVITY_TYPE = "activity_type"
+
+    // Activity types array - make sure this matches your actual activity types
     val ACTIVITY_TYPES = arrayOf(
         "Running",
         "Walking",
@@ -24,29 +37,10 @@ object Constants {
         "Other"
     )
 
-    // Dialog IDs
-    const val DIALOG_DATE = 1
-    const val DIALOG_TIME = 2
-    const val DIALOG_DURATION = 3
-    const val DIALOG_DISTANCE = 4
-    const val DIALOG_CALORIES = 5
-    const val DIALOG_HEART_RATE = 6
-    const val DIALOG_COMMENT = 7
-
-    // Intent Keys
-    const val EXTRA_ACTIVITY_TYPE = "activity_type"
-    const val EXTRA_INPUT_TYPE = "input_type"
-    const val EXTRA_EXERCISE_ID = "exercise_id"
-
-    // SharedPreferences Keys
-    const val PREFS_NAME = "MyRunsPrefs"
-    const val PREF_UNIT_PREFERENCE = "unit_preference"
-
-    // Unit Preferences
-    const val UNIT_METRIC = "Kilometers"
-    const val UNIT_IMPERIAL = "Miles"
-
-    // Conversion Factors
-    const val MILES_TO_KM = 1.60934
-    const val FEET_TO_METERS = 0.3048
+    // If you're using indices for activity types, make sure they match:
+    const val ACTIVITY_TYPE_RUNNING = 0
+    const val ACTIVITY_TYPE_WALKING = 1
+    const val ACTIVITY_TYPE_STANDING = 2
+    const val ACTIVITY_TYPE_CYCLING = 3
+    // ... etc
 }
