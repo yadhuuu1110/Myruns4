@@ -1,42 +1,46 @@
 package com.yadhuChoudhary.MyRuns3
 
 import androidx.lifecycle.LiveData
-import androidx.lifecycle.liveData
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 class ExerciseRepository(private val exerciseDao: ExerciseDao) {
 
-    suspend fun insert(exercise: ExerciseEntry) = withContext(Dispatchers.IO) {
-        exerciseDao.insert(exercise)
-    }
+    val allExercises: LiveData<List<ExerciseEntry>> = exerciseDao.getAllExercises()
 
-    suspend fun getAllExercises(): List<ExerciseEntry> = withContext(Dispatchers.IO) {
-        exerciseDao.getAllExercises()
-    }
-
-    // LiveData version for ViewModel
-    fun getAllExercisesLiveData(): LiveData<List<ExerciseEntry>> {
-        return liveData(Dispatchers.IO) {
-            val exercises = exerciseDao.getAllExercises()
-            emit(exercises)
+    suspend fun insert(exercise: ExerciseEntry): Long {
+        return withContext(Dispatchers.IO) {
+            exerciseDao.insertExercise(exercise)
         }
     }
 
-    suspend fun getExerciseById(id: Long): ExerciseEntry? = withContext(Dispatchers.IO) {
-        exerciseDao.getExerciseById(id)
+    suspend fun getExerciseById(id: Long): ExerciseEntry? {
+        return withContext(Dispatchers.IO) {
+            exerciseDao.getExerciseById(id)
+        }
     }
 
-    suspend fun delete(exercise: ExerciseEntry) = withContext(Dispatchers.IO) {
-        exerciseDao.delete(exercise)
+    suspend fun delete(exercise: ExerciseEntry) {
+        withContext(Dispatchers.IO) {
+            exerciseDao.deleteExercise(exercise)
+        }
     }
 
-    suspend fun update(exercise: ExerciseEntry) = withContext(Dispatchers.IO) {
-        exerciseDao.update(exercise)
+    suspend fun deleteById(id: Long) {
+        withContext(Dispatchers.IO) {
+            exerciseDao.deleteExerciseById(id)
+        }
     }
 
-    // NEW: Delete all records
-    suspend fun deleteAll() = withContext(Dispatchers.IO) {
-        exerciseDao.deleteAll()
+    suspend fun update(exercise: ExerciseEntry) {
+        withContext(Dispatchers.IO) {
+            exerciseDao.updateExercise(exercise)
+        }
+    }
+
+    suspend fun deleteAll() {
+        withContext(Dispatchers.IO) {
+            exerciseDao.deleteAllExercises()
+        }
     }
 }

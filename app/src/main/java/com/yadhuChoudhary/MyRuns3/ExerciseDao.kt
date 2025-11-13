@@ -1,26 +1,29 @@
 package com.yadhuChoudhary.MyRuns3
 
+import androidx.lifecycle.LiveData
 import androidx.room.*
 
 @Dao
 interface ExerciseDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(exercise: ExerciseEntry): Long
+    suspend fun insertExercise(exercise: ExerciseEntry): Long
 
     @Query("SELECT * FROM exercise_table ORDER BY dateTime DESC")
-    suspend fun getAllExercises(): List<ExerciseEntry>
+    fun getAllExercises(): LiveData<List<ExerciseEntry>>
 
     @Query("SELECT * FROM exercise_table WHERE id = :id")
     suspend fun getExerciseById(id: Long): ExerciseEntry?
 
     @Delete
-    suspend fun delete(exercise: ExerciseEntry)
+    suspend fun deleteExercise(exercise: ExerciseEntry)
+
+    @Query("DELETE FROM exercise_table WHERE id = :id")
+    suspend fun deleteExerciseById(id: Long)
 
     @Update
-    suspend fun update(exercise: ExerciseEntry)
+    suspend fun updateExercise(exercise: ExerciseEntry)
 
-    // NEW: Delete all records
     @Query("DELETE FROM exercise_table")
-    suspend fun deleteAll()
+    suspend fun deleteAllExercises()
 }

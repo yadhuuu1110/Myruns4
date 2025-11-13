@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.yadhuChoudhary.MyRuns3"  // ✅ FIXED: Corrected namespace
+    namespace = "com.yadhuChoudhary.MyRuns3"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.yadhuChoudhary.MyRuns3"  // ✅ FIXED: Removed 'V' typo
+        applicationId = "com.yadhuChoudhary.MyRuns3"
         minSdk = 24
         targetSdk = 36
         versionCode = 1

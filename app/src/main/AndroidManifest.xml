@@ -39,12 +39,12 @@
         android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar"
         tools:targetApi="31">
 
-        <!-- ✅ Google Maps API Key (REPLACE WITH YOUR KEY!) -->
+        <!-- Google Maps API Key -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="AIzaSyADkQF5uTq73ZmTsg832XqKqPaBFuNsjvo" />
 
-        <!-- ✅ FIXED: FileProvider declaration -->
+        <!-- FileProvider declaration -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="com.yadhuChoudhary.myruns1.fileprovider"
@@ -77,11 +77,13 @@
             android:label="@string/title_display_entry"
             android:parentActivityName=".MainActivity" />
 
-        <!-- ✅ CRITICAL: MapDisplayActivity (not MapActivity) -->
+        <!-- MapDisplayActivity -->
         <activity
             android:name=".MapDisplayActivity"
             android:label="@string/title_map_display"
-            android:parentActivityName=".MainActivity" />
+            android:parentActivityName=".MainActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:exported="false"/>
 
         <!-- Profile Activity -->
         <activity
@@ -89,7 +91,7 @@
             android:label="Profile"
             android:parentActivityName=".MainActivity" />
 
-        <!-- ✅ Foreground Tracking Service -->
+        <!-- Foreground Tracking Service -->
         <service
             android:name=".TrackingService"
             android:enabled="true"

@@ -1,182 +1,175 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:paddingTop="16dp">
+    android:orientation="vertical">
 
-    <LinearLayout
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/toolbar"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/colorPrimary"
+        android:elevation="4dp"
+        android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
+        app:popupTheme="@style/ThemeOverlay.AppCompat.Light" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
         android:padding="16dp">
 
-        <!-- Input Type -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/input_type"
-            android:textSize="12sp"
-            android:textColor="@android:color/darker_gray" />
-
-        <TextView
-            android:id="@+id/tv_display_input_type"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/manual_entry"
-            android:textSize="16sp"
-            android:textColor="@android:color/black"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp" />
+            android:orientation="vertical">
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="@android:color/darker_gray" />
+            <!-- Input Type -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Input Type"
+                android:textColor="@android:color/darker_gray"
+                android:textSize="14sp" />
 
-        <!-- Activity Type -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/activity_type"
-            android:textSize="12sp"
-            android:textColor="@android:color/darker_gray"
-            android:layout_marginTop="16dp" />
+            <TextView
+                android:id="@+id/tv_input_type_value"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Manual Entry"
+                android:textColor="@android:color/black"
+                android:textSize="16sp"
+                android:paddingTop="4dp"
+                android:paddingBottom="16dp" />
 
-        <TextView
-            android:id="@+id/tv_display_activity_type"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/running"
-            android:textSize="16sp"
-            android:textColor="@android:color/black"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp" />
+            <!-- Activity Type -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Activity type"
+                android:textColor="@android:color/darker_gray"
+                android:textSize="14sp" />
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="@android:color/darker_gray" />
+            <TextView
+                android:id="@+id/tv_activity_type_value"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Running"
+                android:textColor="@android:color/black"
+                android:textSize="16sp"
+                android:paddingTop="4dp"
+                android:paddingBottom="16dp" />
 
-        <!-- Date and Time -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/date_and_time"
-            android:textSize="12sp"
-            android:textColor="@android:color/darker_gray"
-            android:layout_marginTop="16dp" />
+            <!-- Date -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Date"
+                android:textColor="@android:color/darker_gray"
+                android:textSize="14sp" />
 
-        <TextView
-            android:id="@+id/tv_display_date_time"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/DateTime"
-            android:textSize="16sp"
-            android:textColor="@android:color/black"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp" />
+            <TextView
+                android:id="@+id/tv_date_time_value"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="1:55:46 AM 13-Dec-2025"
+                android:textColor="@android:color/black"
+                android:textSize="16sp"
+                android:paddingTop="4dp"
+                android:paddingBottom="16dp" />
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="@android:color/darker_gray" />
+            <!-- Duration -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Duration"
+                android:textColor="@android:color/darker_gray"
+                android:textSize="14sp" />
 
-        <!-- Duration -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/duration"
-            android:textSize="12sp"
-            android:textColor="@android:color/darker_gray"
-            android:layout_marginTop="16dp" />
+            <TextView
+                android:id="@+id/tv_duration_value"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="0:0 Secs"
+                android:textColor="@android:color/black"
+                android:textSize="16sp"
+                android:paddingTop="4dp"
+                android:paddingBottom="16dp" />
 
-        <TextView
-            android:id="@+id/tv_display_duration"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/Dur"
-            android:textSize="16sp"
-            android:textColor="@android:color/black"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp" />
+            <!-- Distance -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Distance"
+                android:textColor="@android:color/darker_gray"
+                android:textSize="14sp" />
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="@android:color/darker_gray" />
+            <TextView
+                android:id="@+id/tv_distance_value"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="0.0 Metric"
+                android:textColor="@android:color/black"
+                android:textSize="16sp"
+                android:paddingTop="4dp"
+                android:paddingBottom="16dp" />
 
-        <!-- Distance -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/distance"
-            android:textSize="12sp"
-            android:textColor="@android:color/darker_gray"
-            android:layout_marginTop="16dp" />
+            <!-- Calories -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Calories"
+                android:textColor="@android:color/darker_gray"
+                android:textSize="14sp" />
 
-        <TextView
-            android:id="@+id/tv_display_distance"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/_0_miles"
-            android:textSize="16sp"
-            android:textColor="@android:color/black"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp" />
+            <TextView
+                android:id="@+id/tv_calories_value"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="0.0"
+                android:textColor="@android:color/black"
+                android:textSize="16sp"
+                android:paddingTop="4dp"
+                android:paddingBottom="16dp" />
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="@android:color/darker_gray" />
+            <!-- Heart Rate -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Heart Rate"
+                android:textColor="@android:color/darker_gray"
+                android:textSize="14sp" />
 
-        <!-- Calories -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/calories"
-            android:textSize="12sp"
-            android:textColor="@android:color/darker_gray"
-            android:layout_marginTop="16dp" />
+            <TextView
+                android:id="@+id/tv_heart_rate_value"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="0.0"
+                android:textColor="@android:color/black"
+                android:textSize="16sp"
+                android:paddingTop="4dp"
+                android:paddingBottom="16dp" />
 
-        <TextView
-            android:id="@+id/tv_display_calories"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/_0_cals"
-            android:textSize="16sp"
-            android:textColor="@android:color/black"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp" />
+            <!-- Comment -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Comment"
+                android:textColor="@android:color/darker_gray"
+                android:textSize="14sp" />
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="@android:color/darker_gray" />
+            <TextView
+                android:id="@+id/tv_comment_value"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:textColor="@android:color/black"
+                android:textSize="16sp"
+                android:paddingTop="4dp"
+                android:paddingBottom="16dp"
+                android:minHeight="48dp" />
 
-        <!-- Heart Rate -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/heart_rate"
-            android:textSize="12sp"
-            android:textColor="@android:color/darker_gray"
-            android:layout_marginTop="16dp" />
+        </LinearLayout>
+    </ScrollView>
 
-        <TextView
-            android:id="@+id/tv_display_heart_rate"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/_0_bpm"
-            android:textSize="16sp"
-            android:textColor="@android:color/black"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp" />
-
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="@android:color/darker_gray" />
-
-    </LinearLayout>
-
-</ScrollView>
+</LinearLayout>

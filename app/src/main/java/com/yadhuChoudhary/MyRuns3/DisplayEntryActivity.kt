@@ -13,30 +13,20 @@ import java.util.*
 
 class DisplayEntryActivity : AppCompatActivity() {
 
-    private lateinit var tvInputType: TextView
-    private lateinit var tvActivityType: TextView
-    private lateinit var tvDateTime: TextView
-    private lateinit var tvDuration: TextView
-    private lateinit var tvDistance: TextView
-    private lateinit var tvCalories: TextView
-    private lateinit var tvHeartRate: TextView
-    private lateinit var tvComment: TextView
-
     private lateinit var repository: ExerciseRepository
     private var exerciseId: Long = -1
     private var currentExercise: ExerciseEntry? = null
 
-    private val dateFormat = SimpleDateFormat("HH:mm:ss MMM dd yyyy", Locale.getDefault())
+    private val dateFormat = SimpleDateFormat("h:mm:ss a dd-MMM-yyyy", Locale.getDefault())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_display_entry)
 
-        // Set title without back button
-        supportActionBar?.title = "MyRuns3"
-        supportActionBar?.setDisplayHomeAsUpEnabled(false)
-
-        initializeViews()
+        // Set title with back button
+        setSupportActionBar(findViewById(R.id.toolbar))
+        supportActionBar?.title = "MyRuns4"
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
         // Initialize database
         val database = ExerciseDatabase.getDatabase(applicationContext)
@@ -48,16 +38,6 @@ class DisplayEntryActivity : AppCompatActivity() {
         if (exerciseId != -1L) {
             loadExerciseEntry()
         }
-    }
-
-    private fun initializeViews() {
-        tvInputType = findViewById(R.id.tv_display_input_type)
-        tvActivityType = findViewById(R.id.tv_display_activity_type)
-        tvDateTime = findViewById(R.id.tv_display_date_time)
-        tvDuration = findViewById(R.id.tv_display_duration)
-        tvDistance = findViewById(R.id.tv_display_distance)
-        tvCalories = findViewById(R.id.tv_display_calories)
-        tvHeartRate = findViewById(R.id.tv_display_heart_rate)
     }
 
     private fun loadExerciseEntry() {
@@ -86,7 +66,7 @@ class DisplayEntryActivity : AppCompatActivity() {
             Constants.INPUT_TYPE_AUTOMATIC -> "Automatic"
             else -> "Unknown"
         }
-        tvInputType.text = inputTypeStr
+        findTextView(R.id.tv_input_type_value)?.text = inputTypeStr
 
         // Activity Type
         val activityTypeStr = if (exercise.activityType < Constants.ACTIVITY_TYPES.size) {
@@ -94,31 +74,47 @@ class DisplayEntryActivity : AppCompatActivity() {
         } else {
             "Unknown"
         }
-        tvActivityType.text = activityTypeStr
+        findTextView(R.id.tv_activity_type_value)?.text = activityTypeStr
 
         // Date and Time
-        tvDateTime.text = dateFormat.format(exercise.dateTime.time)
+        findTextView(R.id.tv_date_time_value)?.text = dateFormat.format(exercise.dateTime.time)
 
         // Duration
-        tvDuration.text = UnitConverter.formatDuration(exercise.duration)
+        findTextView(R.id.tv_duration_value)?.text = UnitConverter.formatDuration(exercise.duration)
 
         // Distance (with unit conversion)
-        tvDistance.text = UnitConverter.formatDistance(exercise.distance, this)
+        findTextView(R.id.tv_distance_value)?.text = UnitConverter.formatDistance(exercise.distance, this)
 
         // Calories
-        tvCalories.text = "${exercise.calorie.toInt()} cals"
+        findTextView(R.id.tv_calories_value)?.text = UnitConverter.formatCalories(exercise.calorie)
 
         // Heart Rate
-        tvHeartRate.text = "${exercise.heartRate.toInt()} bpm"
+        findTextView(R.id.tv_heart_rate_value)?.text = "${exercise.heartRate.toInt()} bpm"
+
+        // Comment
+        findTextView(R.id.tv_comment_value)?.text = exercise.comment
+    }
+
+    private fun findTextView(id: Int): TextView? {
+        return try {
+            findViewById<TextView>(id)
+        } catch (e: Exception) {
+            null
+        }
     }
 
     override fun onCreateOptionsMenu(menu: android.view.Menu?): Boolean {
+        // SHOW DELETE BUTTON FOR ALL ENTRY TYPES
         menuInflater.inflate(R.menu.menu_display_entry, menu)
         return true
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+            android.R.id.home -> {
+                finish()
+                true
+            }
             R.id.action_delete -> {
                 deleteExerciseEntry()
                 true
@@ -128,24 +124,31 @@ class DisplayEntryActivity : AppCompatActivity() {
     }
 
     private fun deleteExerciseEntry() {
-        lifecycleScope.launch {
-            try {
-                currentExercise?.let { exercise ->
-                    repository.delete(exercise)
-                    Toast.makeText(
-                        this@DisplayEntryActivity,
-                        "Exercise deleted successfully",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                    finish()
+        AlertDialog.Builder(this)
+            .setTitle("Delete Entry")
+            .setMessage("Are you sure you want to delete this exercise entry?")
+            .setPositiveButton("Delete") { _, _ ->
+                lifecycleScope.launch {
+                    try {
+                        currentExercise?.let { exercise ->
+                            repository.delete(exercise)
+                            Toast.makeText(
+                                this@DisplayEntryActivity,
+                                "Exercise deleted successfully",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            finish()
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(
+                            this@DisplayEntryActivity,
+                            "Error deleting exercise: ${e.message}",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
                 }
-            } catch (e: Exception) {
-                Toast.makeText(
-                    this@DisplayEntryActivity,
-                    "Error deleting exercise: ${e.message}",
-                    Toast.LENGTH_SHORT
-                ).show()
             }
-        }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 }

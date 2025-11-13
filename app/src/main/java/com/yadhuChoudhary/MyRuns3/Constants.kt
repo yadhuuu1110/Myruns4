@@ -8,6 +8,8 @@ object Constants {
     // Unit types
     const val UNIT_KILOMETERS = 0
     const val UNIT_MILES = 1
+    const val UNIT_METRIC = 0  // Same as UNIT_KILOMETERS
+    const val UNIT_IMPERIAL = 1  // Same as UNIT_MILES
 
     // Input types
     const val INPUT_TYPE_MANUAL = 0

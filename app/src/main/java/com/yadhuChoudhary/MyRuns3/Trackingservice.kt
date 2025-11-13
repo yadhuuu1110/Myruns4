@@ -115,9 +115,10 @@ class TrackingService : Service() {
 
     private fun startLocationUpdates() {
         val locationRequest = LocationRequest.create().apply {
-            interval = 1000 // 1 second
-            fastestInterval = 500 // 0.5 seconds
+            interval = 500 // 500ms - FASTER UPDATES
+            fastestInterval = 250 // 250ms
             priority = LocationRequest.PRIORITY_HIGH_ACCURACY
+            smallestDisplacement = 0f
         }
 
         locationCallback = object : LocationCallback() {
@@ -145,11 +146,10 @@ class TrackingService : Service() {
 
         // Calculate current speed
         val currentSpeed = if (location.hasSpeed()) {
-            // Convert m/s to km/h
-            (location.speed * 3.6).coerceAtLeast(0.0)
+            // Convert m/s to mph (to match your old code)
+            (location.speed * 2.23694).coerceAtLeast(0.0)
         } else if (lastLocation != null) {
-            // Calculate speed from distance and time
-            val distance = lastLocation!!.distanceTo(location) / 1000.0 // km
+            val distance = lastLocation!!.distanceTo(location) / 1609.34 // miles
             val timeDiff = (location.time - lastLocation!!.time) / 1000.0 / 3600.0 // hours
             if (timeDiff > 0) {
                 (distance / timeDiff).coerceAtLeast(0.0)
@@ -163,15 +163,15 @@ class TrackingService : Service() {
         // Update current speed LiveData
         _currentSpeedLiveData.postValue(currentSpeed)
 
-        // Calculate distance
+        // Calculate distance in miles
         if (lastLocation != null) {
             val distanceMeters = lastLocation!!.distanceTo(location)
-            totalDistance += distanceMeters / 1000.0 // Convert to km
+            totalDistance += distanceMeters / 1609.34 // Convert to miles
         }
 
         // Track altitude for climb calculation
         if (location.hasAltitude()) {
-            val altitude = location.altitude
+            val altitude = location.altitude * 3.28084 // Convert to feet
             if (altitude > maxAltitude) maxAltitude = altitude
             if (altitude < minAltitude) minAltitude = altitude
         }
@@ -184,23 +184,23 @@ class TrackingService : Service() {
 
     private fun updateExerciseEntry() {
         val currentTime = System.currentTimeMillis()
-        val duration = (currentTime - startTime) / 1000.0 / 60.0 // minutes
+        val duration = (currentTime - startTime) / 1000.0 // seconds
 
-        // Calculate average speed
+        // Calculate average speed in mph
         val avgSpeed = if (duration > 0) {
-            (totalDistance / duration) * 60.0 // km/h
+            (totalDistance / (duration / 3600.0)) // mph
         } else {
             0.0
         }
 
-        // Calculate climb (difference between max and min altitude in km)
+        // Calculate climb in feet
         val climb = if (maxAltitude > 0 && minAltitude < Double.MAX_VALUE) {
-            (maxAltitude - minAltitude) / 1000.0 // Convert to km
+            maxAltitude - minAltitude
         } else {
             0.0
         }
 
-        // Calculate calories (simple estimation based on activity type and distance)
+        // Calculate calories
         val calorie = calculateCalories(totalDistance, duration, activityType)
 
         // Create Calendar for dateTime
@@ -228,30 +228,28 @@ class TrackingService : Service() {
         )
 
         _exerciseEntryLiveData.postValue(currentEntry!!)
-        updateNotification()
     }
 
     private fun calculateCalories(distance: Double, duration: Double, activityType: Int): Double {
-        // Simple calorie calculation based on activity type
-        // These are rough estimates - calories per km
-        val caloriesPerKm = when (activityType) {
-            0 -> 65.0  // Running
-            1 -> 50.0  // Walking
-            2 -> 20.0  // Standing
-            3 -> 45.0  // Cycling
-            4 -> 60.0  // Hiking
-            5 -> 70.0  // Downhill Skiing
-            6 -> 75.0  // Cross-Country Skiing
-            7 -> 65.0  // Snowboarding
-            8 -> 55.0  // Skating
-            9 -> 80.0  // Swimming
-            10 -> 50.0 // Mountain Biking
-            11 -> 40.0 // Wheelchair
-            12 -> 48.0 // Elliptical
-            else -> 50.0 // Other
+        // Calories per mile
+        val caloriesPerMile = when (activityType) {
+            0 -> 100.0  // Running
+            1 -> 80.0   // Walking
+            2 -> 30.0   // Standing
+            3 -> 70.0   // Cycling
+            4 -> 95.0   // Hiking
+            5 -> 110.0  // Downhill Skiing
+            6 -> 120.0  // Cross-Country Skiing
+            7 -> 100.0  // Snowboarding
+            8 -> 85.0   // Skating
+            9 -> 130.0  // Swimming
+            10 -> 75.0  // Mountain Biking
+            11 -> 60.0  // Wheelchair
+            12 -> 75.0  // Elliptical
+            else -> 80.0 // Other
         }
 
-        return distance * caloriesPerKm
+        return distance * caloriesPerMile
     }
 
     fun getCurrentEntry(): ExerciseEntry? {
@@ -263,7 +261,6 @@ class TrackingService : Service() {
             fusedLocationClient?.removeLocationUpdates(it)
         }
 
-        // Set current speed to 0 when stopping
         _currentSpeedLiveData.postValue(0.0)
 
         stopForeground(true)
@@ -276,9 +273,7 @@ class TrackingService : Service() {
                 CHANNEL_ID,
                 "Tracking Service",
                 NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Exercise tracking notifications"
-            }
+            )
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(channel)
         }
@@ -298,12 +293,6 @@ class TrackingService : Service() {
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()
-    }
-
-    private fun updateNotification() {
-        val notification = createNotification()
-        val manager = getSystemService(NotificationManager::class.java)
-        manager.notify(NOTIFICATION_ID, notification)
     }
 
     override fun onDestroy() {

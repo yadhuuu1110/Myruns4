@@ -37,7 +37,7 @@ class MainActivity : AppCompatActivity() {
         // Setup toolbar with title
         toolbar = findViewById(R.id.toolbar)
         setSupportActionBar(toolbar)
-        supportActionBar?.title = "MyRuns3"
+        supportActionBar?.title = "MyRuns4"
 
         fragmentA = FragmentA()
         fragmentB = FragmentB()

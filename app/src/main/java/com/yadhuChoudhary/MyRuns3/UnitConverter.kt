@@ -1,23 +1,23 @@
 package com.yadhuChoudhary.MyRuns3
 
 import android.content.Context
-import android.content.SharedPreferences
 import androidx.preference.PreferenceManager
 
 object UnitConverter {
 
     fun getUnitPreference(context: Context): String {
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
-        return prefs.getString("unit_pref", Constants.UNIT_IMPERIAL) ?: Constants.UNIT_IMPERIAL
+        val pref = prefs.getString("unit_pref", "Miles")
+        return pref ?: "Miles"
     }
 
     fun isMetric(context: Context): Boolean {
-        return getUnitPreference(context) == Constants.UNIT_METRIC
+        return getUnitPreference(context) == "Kilometers"
     }
 
     fun convertDistance(distanceInMiles: Double, context: Context): Double {
         return if (isMetric(context)) {
-            distanceInMiles * Constants.MILES_TO_KM
+            distanceInMiles * 1.60934  // Miles to Kilometers
         } else {
             distanceInMiles
         }
@@ -39,7 +39,7 @@ object UnitConverter {
 
     fun convertClimb(climbInFeet: Double, context: Context): Double {
         return if (isMetric(context)) {
-            climbInFeet * Constants.FEET_TO_METERS
+            climbInFeet * 0.3048  // Feet to Meters
         } else {
             climbInFeet
         }
@@ -61,5 +61,9 @@ object UnitConverter {
             minutes > 0 -> String.format("%dm %ds", minutes, seconds)
             else -> String.format("%ds", seconds)
         }
+    }
+
+    fun formatCalories(calories: Double): String {
+        return String.format("%.0f", calories)
     }
 }

@@ -9,20 +9,20 @@
     android:focusable="true">
 
     <TextView
-        android:id="@+id/tv_first_row"
+        android:id="@+id/tv_entry_title"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="GPS: Running, 2:28:05 AM"
+        android:text="Manual: Downhill Skiing, 1:51:24 AM"
         android:textColor="@android:color/black"
         android:textSize="16sp"
         android:textStyle="bold"
         android:paddingBottom="4dp" />
 
     <TextView
-        android:id="@+id/tv_second_row"
+        android:id="@+id/tv_entry_details"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="13-Nov-2025\n0.0 Kilometers, 0 Mins"
+        android:text="13-Nov-2025\n0.0 Kilometers, 0 mins"
         android:textColor="@android:color/darker_gray"
         android:textSize="14sp" />
 
