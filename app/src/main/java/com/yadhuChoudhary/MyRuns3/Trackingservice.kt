@@ -13,6 +13,7 @@ import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.os.Looper
+import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.LiveData
@@ -33,6 +34,7 @@ import kotlin.math.sqrt
 class TrackingService : Service(), SensorEventListener {
 
     companion object {
+        private const val TAG = "TrackingService"
         const val NOTIFICATION_ID = 1
         const val CHANNEL_ID = "TrackingServiceChannel"
 
@@ -87,6 +89,7 @@ class TrackingService : Service(), SensorEventListener {
 
     override fun onCreate() {
         super.onCreate()
+        Log.d(TAG, "Service onCreate")
 
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
 
@@ -95,6 +98,7 @@ class TrackingService : Service(), SensorEventListener {
             override fun onLocationResult(locationResult: LocationResult) {
                 super.onLocationResult(locationResult)
                 locationResult.lastLocation?.let { location ->
+                    Log.d(TAG, "Location update received: ${location.latitude}, ${location.longitude}")
                     handleLocationUpdate(location)
                 }
             }
@@ -112,9 +116,11 @@ class TrackingService : Service(), SensorEventListener {
             ACTION_START_TRACKING -> {
                 val inputType = intent.getIntExtra(EXTRA_INPUT_TYPE, Constants.INPUT_TYPE_GPS)
                 val activityType = intent.getIntExtra(EXTRA_ACTIVITY_TYPE, 0)
+                Log.d(TAG, "Starting tracking - Input: $inputType, Activity: $activityType")
                 startTracking(inputType, activityType)
             }
             ACTION_STOP_TRACKING -> {
+                Log.d(TAG, "Stopping tracking")
                 stopTracking()
             }
         }
@@ -122,12 +128,17 @@ class TrackingService : Service(), SensorEventListener {
     }
 
     override fun onBind(intent: Intent?): IBinder {
+        Log.d(TAG, "Service onBind")
         return binder
     }
 
     private fun startTracking(inputType: Int, activityType: Int) {
-        if (isTracking) return
+        if (isTracking) {
+            Log.d(TAG, "Already tracking, ignoring start request")
+            return
+        }
 
+        Log.d(TAG, "Starting tracking sequence")
         isTracking = true
         isAutoMode = inputType == Constants.INPUT_TYPE_AUTOMATIC
 
@@ -154,12 +165,15 @@ class TrackingService : Service(), SensorEventListener {
         // Start foreground service with notification
         startForeground(NOTIFICATION_ID, createNotification())
 
+        // Post initial entry
         _exerciseEntryLiveData.postValue(currentEntry)
+        Log.d(TAG, "Tracking started successfully")
     }
 
     private fun stopTracking() {
         if (!isTracking) return
 
+        Log.d(TAG, "Stopping tracking")
         isTracking = false
 
         // Stop location updates
@@ -174,20 +188,27 @@ class TrackingService : Service(), SensorEventListener {
         calculateFinalStatistics()
 
         // Save location list to entry
-        currentEntry.locationList = serializeLocationList(locationList)
+        if (locationList.isNotEmpty()) {
+            currentEntry.locationList = LocationUtils.serializeLocationList(locationList)
+            Log.d(TAG, "Saved ${locationList.size} locations to entry")
+        } else {
+            Log.w(TAG, "No locations to save!")
+        }
 
         _exerciseEntryLiveData.postValue(currentEntry)
 
         // Stop foreground and service
         stopForeground(true)
         stopSelf()
+        Log.d(TAG, "Tracking stopped")
     }
 
     private fun startLocationUpdates() {
         val locationRequest = LocationRequest.create().apply {
-            interval = 5000 // 5 seconds
-            fastestInterval = 2000 // 2 seconds
+            interval = 1000 // 1 second - very frequent updates for accurate path
+            fastestInterval = 500 // 0.5 seconds
             priority = LocationRequest.PRIORITY_HIGH_ACCURACY
+            smallestDisplacement = 1f // Update even for small movements (1 meter)
         }
 
         if (ActivityCompat.checkSelfPermission(
@@ -195,24 +216,70 @@ class TrackingService : Service(), SensorEventListener {
                 android.Manifest.permission.ACCESS_FINE_LOCATION
             ) == PackageManager.PERMISSION_GRANTED
         ) {
+            Log.d(TAG, "Starting location updates with 1-second interval")
             fusedLocationClient.requestLocationUpdates(
                 locationRequest,
                 locationCallback,
                 Looper.getMainLooper()
             )
+
+            // Try to get last known location immediately
+            fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                location?.let {
+                    Log.d(TAG, "Got last known location: ${it.latitude}, ${it.longitude}")
+                    handleLocationUpdate(it)
+                }
+            }
+        } else {
+            Log.e(TAG, "Location permission not granted!")
         }
     }
 
     private fun handleLocationUpdate(location: Location) {
-        val latLng = LatLng(location.latitude, location.longitude)
-        locationList.add(latLng)
-
-        // Calculate distance
-        lastLocation?.let { last ->
-            val distance = last.distanceTo(location) / 1609.34 // Convert meters to miles
-            totalDistance += distance
+        // Filter out locations with poor accuracy (more than 20 meters)
+        if (location.accuracy > 20f) {
+            Log.d(TAG, "Skipping location with poor accuracy: ${location.accuracy}m")
+            return
         }
-        lastLocation = location
+
+        val latLng = LatLng(location.latitude, location.longitude)
+
+        // For the first location, just add it
+        if (locationList.isEmpty()) {
+            locationList.add(latLng)
+            Log.d(TAG, "Added first location: $latLng")
+            lastLocation = location
+        } else {
+            // Calculate distance from last location
+            lastLocation?.let { last ->
+                val results = FloatArray(1)
+                Location.distanceBetween(
+                    last.latitude,
+                    last.longitude,
+                    location.latitude,
+                    location.longitude,
+                    results
+                )
+                val distanceMeters = results[0]
+                val distanceMiles = distanceMeters / 1609.34
+
+                // Only add if:
+                // 1. Moved at least 2 meters (reduces GPS jitter)
+                // 2. Movement is realistic (less than 100 mph = 0.028 miles per second)
+                if (distanceMeters >= 2f && distanceMiles < 0.028) {
+                    locationList.add(latLng)
+                    totalDistance += distanceMiles
+                    lastLocation = location
+                    Log.d(TAG, "Location added. Distance: +$distanceMiles mi, Total: $totalDistance mi, Count: ${locationList.size}")
+                } else if (distanceMeters < 2f) {
+                    // Still update last location for accurate current speed
+                    lastLocation = location
+                    Log.d(TAG, "Location too close, not adding to path (${distanceMeters}m)")
+                } else {
+                    Log.d(TAG, "Location movement too fast, skipping ($distanceMiles miles)")
+                }
+            }
+        }
 
         // Update exercise entry
         val duration = (System.currentTimeMillis() - startTime) / 1000.0
@@ -235,7 +302,12 @@ class TrackingService : Service(), SensorEventListener {
             }
         }
 
+        // Update location list in entry for real-time display
+        currentEntry.locationList = LocationUtils.serializeLocationList(locationList)
+
+        // Post update
         _exerciseEntryLiveData.postValue(currentEntry)
+        Log.d(TAG, "Posted entry update - Distance: $totalDistance, Duration: $duration, Locations: ${locationList.size}")
     }
 
     private fun startActivityRecognition() {
@@ -270,7 +342,6 @@ class TrackingService : Service(), SensorEventListener {
                 )
 
                 try {
-                    // Convert Float -> Double
                     accelerometerQueue.add(magnitude.toDouble())
                 } catch (e: IllegalStateException) {
                     // Queue full → remove and insert again
@@ -280,7 +351,6 @@ class TrackingService : Service(), SensorEventListener {
             }
         }
     }
-
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
         // Not needed
@@ -320,8 +390,6 @@ class TrackingService : Service(), SensorEventListener {
     private fun classifyActivity(block: DoubleArray): Int {
         // Simple classification based on magnitude
         val max = block.maxOrNull() ?: 0.0
-
-        // FFT would go here in production - simplified for now
         val avgMagnitude = block.average()
 
         return when {
@@ -340,10 +408,8 @@ class TrackingService : Service(), SensorEventListener {
             currentEntry.avgSpeed = (totalDistance / duration) * 3600
             currentEntry.avgPace = duration / totalDistance / 60
         }
-    }
 
-    private fun serializeLocationList(locations: List<LatLng>): ByteArray {
-        return LocationUtils.serializeLocationList(locations)
+        Log.d(TAG, "Final stats - Distance: $totalDistance, Duration: $duration, Locations: ${locationList.size}")
     }
 
     private fun createNotificationChannel() {
@@ -384,6 +450,7 @@ class TrackingService : Service(), SensorEventListener {
 
     override fun onDestroy() {
         super.onDestroy()
+        Log.d(TAG, "Service onDestroy")
         serviceJob.cancel()
         if (isTracking) {
             stopTracking()

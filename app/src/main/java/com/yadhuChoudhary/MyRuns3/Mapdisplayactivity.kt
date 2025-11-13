@@ -5,9 +5,12 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Bundle
 import android.os.IBinder
+import android.view.Menu
+import android.view.MenuItem
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -29,7 +32,7 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
     private var googleMap: GoogleMap? = null
     private var polyline: Polyline? = null
     private var startMarker: Marker? = null
-    private var endMarker: Marker? = null
+    private var currentMarker: Marker? = null
 
     // UI Elements
     private lateinit var tvTypeStats: TextView
@@ -48,7 +51,7 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
 
             // Observe exercise entry updates
             trackingService?.exerciseEntryLiveData?.observe(this@MapDisplayActivity) { entry ->
-                updateUI(entry)
+                updateUI(entry, isLiveMode)
                 updateMap(entry)
             }
         }
@@ -64,6 +67,8 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
     private var exerciseId: Long = -1
     private lateinit var repository: ExerciseRepository
     private var hasZoomedToLocation = false
+    private var currentExercise: ExerciseEntry? = null
+    private var lastKnownSpeed = 0.0 // mph
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -100,6 +105,53 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
         tvTypeStats = findViewById(R.id.tv_type_stats)
         btnSave = findViewById(R.id.btn_map_save)
         btnCancel = findViewById(R.id.btn_map_cancel)
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        // Only show delete option in history mode
+        if (!isLiveMode) {
+            menuInflater.inflate(R.menu.menu_display_entry, menu)
+        }
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_delete -> {
+                deleteExerciseEntry()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    private fun deleteExerciseEntry() {
+        AlertDialog.Builder(this)
+            .setTitle("Delete Exercise")
+            .setMessage("Are you sure you want to delete this exercise?")
+            .setPositiveButton("Delete") { _, _ ->
+                lifecycleScope.launch {
+                    try {
+                        currentExercise?.let { exercise ->
+                            repository.delete(exercise)
+                            Toast.makeText(
+                                this@MapDisplayActivity,
+                                "Exercise deleted successfully",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            finish()
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(
+                            this@MapDisplayActivity,
+                            "Error deleting exercise: ${e.message}",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     override fun onMapReady(map: GoogleMap) {
@@ -165,7 +217,7 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
         ) {
             googleMap?.isMyLocationEnabled = true
 
-            // Get last known location and zoom to it
+            // Get last known location and zoom to it (only in live mode)
             if (isLiveMode && !hasZoomedToLocation) {
                 val fusedLocationClient = com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(this)
                 fusedLocationClient.lastLocation.addOnSuccessListener { location ->
@@ -212,7 +264,7 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
     private fun setupHistoryDisplay() {
         btnSave.isEnabled = false
         btnSave.visibility = android.view.View.GONE
-        btnCancel.text = "Back"
+        btnCancel.visibility = android.view.View.GONE // Hide BACK button in history mode
     }
 
     private fun loadHistoryEntry() {
@@ -220,7 +272,8 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
             try {
                 val entry = repository.getExerciseById(exerciseId)
                 entry?.let {
-                    updateUI(it)
+                    currentExercise = it
+                    updateUI(it, false)
                     displayHistoryRoute(it)
                 }
             } catch (e: Exception) {
@@ -233,23 +286,31 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
         }
     }
 
-    private fun updateUI(entry: ExerciseEntry) {
+    private fun updateUI(entry: ExerciseEntry, showCurrentSpeed: Boolean) {
         val activityType = if (entry.activityType < Constants.ACTIVITY_TYPES.size) {
             Constants.ACTIVITY_TYPES[entry.activityType]
         } else {
             "Unknown"
         }
 
-        val duration = UnitConverter.formatDuration(entry.duration)
         val distance = UnitConverter.formatDistance(entry.distance, this)
 
         val statsText = buildString {
             append("Type: $activityType\n")
-            append("Duration: $duration\n")
-            append("Distance: $distance\n")
-            append("Avg Speed: ${String.format("%.2f", entry.avgSpeed)} mph\n")
-            append("Climb: ${String.format("%.0f", entry.climb)} feet\n")
-            append("Calories: ${entry.calorie.toInt()} cals")
+            append("Avg speed: ${String.format("%.1f", entry.avgSpeed)} km/h\n")
+
+            // Show current speed in live mode
+            if (showCurrentSpeed) {
+                if (lastKnownSpeed > 0.1) {
+                    append("Cur speed: ${String.format("%.1f", lastKnownSpeed)} km/h\n")
+                } else {
+                    append("Cur speed: N/A\n")
+                }
+            }
+
+            append("Climb: ${String.format("%.0f", entry.climb)} Kilometers\n")
+            append("Calorie: ${String.format("%.1f", entry.calorie)}\n")
+            append("Distance: $distance")
         }
 
         tvTypeStats.text = statsText
@@ -257,58 +318,104 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
 
     private fun updateMap(entry: ExerciseEntry) {
         entry.locationList?.let { byteArray ->
-            if (byteArray.isEmpty()) return
+            if (byteArray.isEmpty()) {
+                android.util.Log.d("MapDisplay", "Location byte array is empty")
+                return
+            }
 
             val locations = LocationUtils.deserializeLocationList(byteArray)
+            android.util.Log.d("MapDisplay", "Deserializing locations: ${locations.size} points")
 
-            if (locations.isEmpty()) return
+            if (locations.isEmpty()) {
+                android.util.Log.d("MapDisplay", "No locations after deserialization")
+                return
+            }
 
-            // Clear existing markers and polyline
-            startMarker?.remove()
-            endMarker?.remove()
-            polyline?.remove()
-
-            // Add start marker (GREEN)
-            startMarker = googleMap?.addMarker(
-                MarkerOptions()
-                    .position(locations.first())
-                    .title("Start")
-                    .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN))
-            )
-
-            // Add end marker (RED) - only if we have more than one location
-            if (locations.size > 1) {
-                endMarker = googleMap?.addMarker(
+            // Add GREEN start marker (only once)
+            if (startMarker == null && locations.isNotEmpty()) {
+                android.util.Log.d("MapDisplay", "Creating START marker at: ${locations.first()}")
+                startMarker = googleMap?.addMarker(
                     MarkerOptions()
-                        .position(locations.last())
-                        .title("Current")
-                        .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED))
+                        .position(locations.first())
+                        .title("Start")
+                        .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN))
                 )
             }
 
-            // Draw polyline (BLUE LINE)
-            polyline = googleMap?.addPolyline(
-                PolylineOptions()
-                    .addAll(locations)
-                    .color(Color.BLUE)
-                    .width(10f)
-            )
+            // Add/Update RED current position marker
+            if (locations.isNotEmpty()) {
+                val currentPosition = locations.last()
+                android.util.Log.d("MapDisplay", "Current position: $currentPosition")
 
-            // Move camera to show the entire route (only if not manually zoomed)
-            if (locations.size > 1 && !hasZoomedToLocation) {
-                val builder = LatLngBounds.Builder()
-                locations.forEach { builder.include(it) }
-                val bounds = builder.build()
-                val padding = 100
-                googleMap?.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, padding))
-                hasZoomedToLocation = true
-            } else if (locations.size == 1 && !hasZoomedToLocation) {
-                googleMap?.animateCamera(
-                    CameraUpdateFactory.newLatLngZoom(locations.first(), DEFAULT_ZOOM)
-                )
-                hasZoomedToLocation = true
+                if (currentMarker == null) {
+                    // Create marker for the first time
+                    android.util.Log.d("MapDisplay", "Creating CURRENT marker at: $currentPosition")
+                    currentMarker = googleMap?.addMarker(
+                        MarkerOptions()
+                            .position(currentPosition)
+                            .title("Current")
+                            .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED))
+                    )
+
+                    // Zoom to current position initially
+                    if (!hasZoomedToLocation) {
+                        googleMap?.animateCamera(
+                            CameraUpdateFactory.newLatLngZoom(currentPosition, DEFAULT_ZOOM)
+                        )
+                        hasZoomedToLocation = true
+                        android.util.Log.d("MapDisplay", "Zoomed to current location")
+                    }
+                } else {
+                    // Just update the position of existing marker
+                    android.util.Log.d("MapDisplay", "Updating CURRENT marker position to: $currentPosition")
+                    currentMarker?.position = currentPosition
+                }
             }
+
+            // Update polyline (BLUE LINE)
+            if (locations.size >= 2) {
+                polyline?.remove()
+                polyline = googleMap?.addPolyline(
+                    PolylineOptions()
+                        .addAll(locations)
+                        .color(Color.BLUE)
+                        .width(10f)
+                )
+                android.util.Log.d("MapDisplay", "Drew polyline with ${locations.size} points")
+            }
+
+            // Calculate current speed if we have recent locations
+            if (locations.size >= 2) {
+                calculateCurrentSpeed(locations)
+            }
+        } ?: run {
+            android.util.Log.d("MapDisplay", "Entry has no location list")
         }
+    }
+
+    private fun calculateCurrentSpeed(locations: List<LatLng>) {
+        // Calculate speed from last two points
+        if (locations.size < 2) {
+            lastKnownSpeed = 0.0
+            return
+        }
+
+        val lastLoc = locations[locations.size - 1]
+        val prevLoc = locations[locations.size - 2]
+
+        val results = FloatArray(1)
+        android.location.Location.distanceBetween(
+            prevLoc.latitude,
+            prevLoc.longitude,
+            lastLoc.latitude,
+            lastLoc.longitude,
+            results
+        )
+
+        // Assume 1 second interval between points (from TrackingService)
+        val distanceKm = results[0] / 1000.0 // Convert meters to km
+        val timeHours = 1.0 / 3600.0 // 1 second in hours
+        lastKnownSpeed = distanceKm / timeHours // km/h
     }
 
     private fun displayHistoryRoute(entry: ExerciseEntry) {
@@ -321,7 +428,7 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
             }
 
             // Add start marker (GREEN)
-            googleMap?.addMarker(
+            startMarker = googleMap?.addMarker(
                 MarkerOptions()
                     .position(locations.first())
                     .title("Start")
@@ -330,7 +437,7 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
 
             // Add end marker (RED)
             if (locations.size > 1) {
-                googleMap?.addMarker(
+                currentMarker = googleMap?.addMarker(
                     MarkerOptions()
                         .position(locations.last())
                         .title("End")
@@ -339,24 +446,18 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
             }
 
             // Draw polyline (BLUE LINE)
-            googleMap?.addPolyline(
+            polyline = googleMap?.addPolyline(
                 PolylineOptions()
                     .addAll(locations)
                     .color(Color.BLUE)
                     .width(10f)
             )
 
-            // Fit bounds to show entire route
-            if (locations.size > 1) {
-                val builder = LatLngBounds.Builder()
-                locations.forEach { builder.include(it) }
-                val bounds = builder.build()
-                val padding = 100
-                googleMap?.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, padding))
-            } else {
-                googleMap?.moveCamera(
-                    CameraUpdateFactory.newLatLngZoom(locations.first(), DEFAULT_ZOOM)
-                )
+            // DON'T zoom - keep the default zoom level
+            // Just center on the route without changing zoom
+            if (locations.isNotEmpty()) {
+                val centerPosition = locations.first() // Or could use middle point
+                googleMap?.moveCamera(CameraUpdateFactory.newLatLng(centerPosition))
             }
         }
     }
@@ -370,7 +471,7 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
 
         btnCancel.setOnClickListener {
             if (isLiveMode) {
-                // Stop tracking without saving
+                // Stop tracking without saving - no confirmation dialog
                 stopTracking()
             }
             finish()
