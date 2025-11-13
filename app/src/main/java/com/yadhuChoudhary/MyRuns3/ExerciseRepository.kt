@@ -1,5 +1,7 @@
 package com.yadhuChoudhary.MyRuns3
 
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.liveData
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -11,6 +13,14 @@ class ExerciseRepository(private val exerciseDao: ExerciseDao) {
 
     suspend fun getAllExercises(): List<ExerciseEntry> = withContext(Dispatchers.IO) {
         exerciseDao.getAllExercises()
+    }
+
+    // LiveData version for ViewModel
+    fun getAllExercisesLiveData(): LiveData<List<ExerciseEntry>> {
+        return liveData(Dispatchers.IO) {
+            val exercises = exerciseDao.getAllExercises()
+            emit(exercises)
+        }
     }
 
     suspend fun getExerciseById(id: Long): ExerciseEntry? = withContext(Dispatchers.IO) {

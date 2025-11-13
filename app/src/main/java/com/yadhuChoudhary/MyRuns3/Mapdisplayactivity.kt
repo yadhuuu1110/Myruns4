@@ -23,6 +23,8 @@ import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.*
 import kotlinx.coroutines.launch
 
+private val Unit.FrameLayout: Any
+
 class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
 
     // Buttons
@@ -146,21 +148,14 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
         }
     }
 
-    private fun confirmDelete() {
-        AlertDialog.Builder(this)
-            .setTitle("Delete Entry")
-            .setMessage("Are you sure?")
-            .setPositiveButton("Delete") { _, _ ->
-                lifecycleScope.launch {
-                    currentExercise?.let {
-                        repository.delete(it)
-                        Toast.makeText(this@MapDisplayActivity, "Deleted", Toast.LENGTH_SHORT).show()
-                        finish()
-                    }
-                }
+    private fun deleteEntry() {
+        lifecycleScope.launch {
+            currentExercise?.let {
+                repository.delete(it)
+                Toast.makeText(this@MapDisplayActivity, "Deleted", Toast.LENGTH_SHORT).show()
+                finish()
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+        }
     }
 
     override fun onMapReady(map: GoogleMap) {
@@ -347,7 +342,7 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
         }
 
         btnDelete.setOnClickListener {
-            confirmDelete()
+            deleteEntry()
         }
 
         btnDelete.visibility = android.view.View.GONE

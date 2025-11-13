@@ -8,6 +8,7 @@ import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.Toolbar
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.viewpager2.widget.ViewPager2
@@ -21,6 +22,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var fragmentC: FragmentC
     private lateinit var viewPager2: ViewPager2
     private lateinit var tabLayout: TabLayout
+    private lateinit var toolbar: Toolbar
     private lateinit var myAdapter: MyFragmentStateAdapter
     private lateinit var tabLayoutMediator: TabLayoutMediator
 
@@ -31,6 +33,11 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        // Setup toolbar with title
+        toolbar = findViewById(R.id.toolbar)
+        setSupportActionBar(toolbar)
+        supportActionBar?.title = "MyRuns3"
 
         fragmentA = FragmentA()
         fragmentB = FragmentB()

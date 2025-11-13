@@ -40,7 +40,7 @@ class FragmentB : Fragment() {
         // Delete All button setup
         btnDeleteAll = view.findViewById(R.id.btn_delete_all_records)
         btnDeleteAll.setOnClickListener {
-            confirmDeleteAll()
+            deleteAllRecords()
         }
 
         // Initialize adapter with click listener
@@ -68,17 +68,6 @@ class FragmentB : Fragment() {
             // Show/hide delete all button based on whether there are records
             btnDeleteAll.visibility = if (exercises.isEmpty()) View.GONE else View.VISIBLE
         }
-    }
-
-    private fun confirmDeleteAll() {
-        AlertDialog.Builder(requireContext())
-            .setTitle("Delete All Records")
-            .setMessage("Are you sure you want to delete ALL exercise records? This cannot be undone.")
-            .setPositiveButton("Delete All") { _, _ ->
-                deleteAllRecords()
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
     }
 
     private fun deleteAllRecords() {
