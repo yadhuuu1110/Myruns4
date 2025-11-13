@@ -79,13 +79,15 @@ class TrackingService : Service(), SensorEventListener {
     private var totalDistance: Double = 0.0
     private var lastLocation: Location? = null
 
-    // Activity recognition
+    // Activity recognition - FIXED
     private lateinit var sensorManager: SensorManager
     private var accelerometer: Sensor? = null
     private val accelerometerQueue = ArrayBlockingQueue<Double>(1024)
     private val activityCounts = IntArray(3) // Standing, Walking, Running
     private var isAutoMode = false
     private var classifierThread: Thread? = null
+    private var classificationCount = 0
+    private val CLASSIFICATION_WINDOW = 10 // Update activity after 10 classifications
 
     override fun onCreate() {
         super.onCreate()
@@ -153,6 +155,7 @@ class TrackingService : Service(), SensorEventListener {
         totalDistance = 0.0
         locationList.clear()
         activityCounts.fill(0)
+        classificationCount = 0
 
         // Start location updates
         startLocationUpdates()
@@ -369,17 +372,30 @@ class TrackingService : Service(), SensorEventListener {
                 // Classify activity
                 val activityLabel = classifyActivity(block)
                 activityCounts[activityLabel]++
+                classificationCount++
 
-                // Update activity type based on majority vote
-                val dominantActivity = activityCounts.indices.maxByOrNull { activityCounts[it] } ?: 0
-                currentEntry.activityType = when (dominantActivity) {
-                    ACTIVITY_STANDING -> 2 // Standing index in Constants.ACTIVITY_TYPES
-                    ACTIVITY_WALKING -> 1 // Walking
-                    ACTIVITY_RUNNING -> 0 // Running
-                    else -> 0
+                // Update activity type based on majority vote after CLASSIFICATION_WINDOW classifications
+                if (classificationCount >= CLASSIFICATION_WINDOW) {
+                    val dominantActivity = activityCounts.indices.maxByOrNull { activityCounts[it] } ?: 0
+
+                    // Map to Constants.ACTIVITY_TYPES indices
+                    currentEntry.activityType = when (dominantActivity) {
+                        ACTIVITY_RUNNING -> 0    // Running
+                        ACTIVITY_WALKING -> 1    // Walking
+                        ACTIVITY_STANDING -> 2   // Standing
+                        else -> 0
+                    }
+
+                    Log.d(TAG, "Activity updated: Counts[${activityCounts.joinToString()}] -> ${Constants.ACTIVITY_TYPES[currentEntry.activityType]}")
+
+                    _exerciseEntryLiveData.postValue(currentEntry)
+
+                    // Reset counters but keep some history
+                    activityCounts[0] = activityCounts[0] / 2
+                    activityCounts[1] = activityCounts[1] / 2
+                    activityCounts[2] = activityCounts[2] / 2
+                    classificationCount = 0
                 }
-
-                _exerciseEntryLiveData.postValue(currentEntry)
 
             } catch (e: InterruptedException) {
                 break
@@ -388,13 +404,16 @@ class TrackingService : Service(), SensorEventListener {
     }
 
     private fun classifyActivity(block: DoubleArray): Int {
-        // Simple classification based on magnitude
+        // Improved classification based on statistical features
         val max = block.maxOrNull() ?: 0.0
         val avgMagnitude = block.average()
+        val variance = block.map { (it - avgMagnitude) * (it - avgMagnitude) }.average()
+        val stdDev = sqrt(variance)
 
+        // More refined thresholds
         return when {
-            avgMagnitude < 2.0 -> ACTIVITY_STANDING
-            avgMagnitude < 6.0 -> ACTIVITY_WALKING
+            avgMagnitude < 1.5 && stdDev < 1.0 -> ACTIVITY_STANDING
+            avgMagnitude < 4.0 && max < 8.0 -> ACTIVITY_WALKING
             else -> ACTIVITY_RUNNING
         }
     }

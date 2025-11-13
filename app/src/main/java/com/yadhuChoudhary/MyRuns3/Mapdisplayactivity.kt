@@ -114,17 +114,24 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
     }
 
     // -----------------------------
-    // MAP READY
+    // MAP READY - FIXED
     // -----------------------------
     override fun onMapReady(map: GoogleMap) {
         googleMap = map
         map.uiSettings.apply {
             isZoomControlsEnabled = true
-            isMyLocationButtonEnabled = true
+            // Disable my location button (no blue dot)
+            isMyLocationButtonEnabled = false
         }
 
-        if (checkPermission()) map.isMyLocationEnabled = true
-        else requestPermission()
+        // CRITICAL FIX: Disable the blue GPS dot
+        if (checkPermission()) {
+            try {
+                map.isMyLocationEnabled = false  // Changed to false
+            } catch (e: SecurityException) {
+                // Permission issue, ignore
+            }
+        }
 
         if (!isLiveMode) loadHistoryEntry()
     }
@@ -231,64 +238,86 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
     }
 
     // -----------------------------
-    // LIVE MODE MAP
+    // LIVE MODE MAP - FIXED ZOOM
     // -----------------------------
     private fun updateMapLive(entry: ExerciseEntry) {
         val list = LocationUtils.deserializeLocationList(entry.locationList ?: return)
         if (list.size < 1) return
 
-        if (startMarker == null)
+        // Add start marker only once
+        if (startMarker == null) {
             startMarker = googleMap?.addMarker(
                 MarkerOptions().position(list.first())
                     .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN))
+                    .title("Start")
             )
+        }
 
         val last = list.last()
 
+        // Update end marker
         endMarker?.remove()
         endMarker = googleMap?.addMarker(
             MarkerOptions().position(last)
                 .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED))
+                .title("End")
         )
 
+        // Update polyline
         polyline?.remove()
         polyline = googleMap?.addPolyline(
             PolylineOptions().addAll(list).color(Color.BLUE).width(10f)
         )
 
-        if (!hasZoomed) {
+        // FIXED: Use same zoom strategy as history mode for consistency
+        if (!hasZoomed && list.size >= 2) {
+            val builder = LatLngBounds.Builder()
+            for (p in list) builder.include(p)
+            val bounds = builder.build()
+            googleMap?.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, 120))
+            hasZoomed = true
+        } else if (!hasZoomed && list.size == 1) {
+            // For single point, use zoom level 17
             googleMap?.animateCamera(CameraUpdateFactory.newLatLngZoom(last, 17f))
             hasZoomed = true
         }
     }
 
     // -----------------------------
-    // HISTORY MAP
+    // HISTORY MAP - CONSISTENT ZOOM
     // -----------------------------
     private fun drawHistoryRoute(entry: ExerciseEntry) {
         val list = LocationUtils.deserializeLocationList(entry.locationList ?: return)
         if (list.isEmpty()) return
 
+        // Add start marker
         startMarker = googleMap?.addMarker(
             MarkerOptions().position(list.first())
                 .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN))
+                .title("Start")
         )
 
+        // Add end marker
         endMarker = googleMap?.addMarker(
             MarkerOptions().position(list.last())
                 .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED))
+                .title("End")
         )
 
+        // Draw polyline
         polyline = googleMap?.addPolyline(
-            PolylineOptions().addAll(list).color(Color.BLUE).width(7f)
+            PolylineOptions().addAll(list).color(Color.BLUE).width(10f)
         )
 
-        // AUTO FIT PERFECT ZOOM
-        val builder = LatLngBounds.Builder()
-        for (p in list) builder.include(p)
-
-        val bounds = builder.build()
-        googleMap?.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, 120))
+        // AUTO FIT ZOOM - same as live mode
+        if (list.size >= 2) {
+            val builder = LatLngBounds.Builder()
+            for (p in list) builder.include(p)
+            val bounds = builder.build()
+            googleMap?.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, 120))
+        } else if (list.size == 1) {
+            googleMap?.moveCamera(CameraUpdateFactory.newLatLngZoom(list.first(), 17f))
+        }
     }
 
     // -----------------------------

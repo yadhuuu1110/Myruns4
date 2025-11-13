@@ -73,7 +73,7 @@ class MainActivity : AppCompatActivity() {
     private fun requestAllPermissions() {
         val required = mutableListOf<String>()
 
-        // Location
+        // Location - ALWAYS REQUIRED at startup
         if (!hasPermission(Manifest.permission.ACCESS_FINE_LOCATION))
             required.add(Manifest.permission.ACCESS_FINE_LOCATION)
         if (!hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION))
@@ -98,8 +98,10 @@ class MainActivity : AppCompatActivity() {
             required.add(Manifest.permission.POST_NOTIFICATIONS)
         }
 
-        // Storage / media
+        // Storage / media - ALWAYS REQUIRED at startup
         required += getStoragePermissions().filter { !hasPermission(it) }
+
+        // REMOVED CAMERA FROM STARTUP - will be requested when user clicks camera button
 
         if (required.isNotEmpty()) {
             requestPermissionsLauncher.launch(required.toTypedArray())
