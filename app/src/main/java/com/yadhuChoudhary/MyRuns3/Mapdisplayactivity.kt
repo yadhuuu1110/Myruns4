@@ -5,14 +5,15 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Bundle
 import android.os.IBinder
-import android.view.Menu
+import android.view.Gravity
 import android.view.MenuItem
+import android.view.ViewGroup
 import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.android.gms.maps.CameraUpdateFactory
@@ -24,9 +25,19 @@ import kotlinx.coroutines.launch
 
 class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
 
-    private lateinit var tvTypeStats: TextView
+    // Buttons
     private lateinit var btnSave: Button
     private lateinit var btnCancel: Button
+    private lateinit var btnDelete: Button  // NEW: Delete button on map
+
+    // Stats overlay views
+    private lateinit var statsOverlayContainer: LinearLayout
+    private lateinit var tvType: TextView
+    private lateinit var tvAvgSpeed: TextView
+    private lateinit var tvCurSpeed: TextView
+    private lateinit var tvClimb: TextView
+    private lateinit var tvCalorie: TextView
+    private lateinit var tvDistance: TextView
 
     private var googleMap: GoogleMap? = null
     private var polyline: Polyline? = null
@@ -48,18 +59,18 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_map_display)
 
-        // Toolbar
+        // Toolbar WITHOUT back arrow
         setSupportActionBar(findViewById(R.id.toolbar))
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        supportActionBar?.setDisplayHomeAsUpEnabled(false)  // CHANGED: No back arrow
 
         // DB
         repository = ExerciseRepository(
             ExerciseDatabase.getDatabase(applicationContext).exerciseDao()
         )
 
-        tvTypeStats = findViewById(R.id.tv_type_stats)
         btnSave = findViewById(R.id.btn_map_save)
         btnCancel = findViewById(R.id.btn_map_cancel)
+        btnDelete = findViewById(R.id.btn_map_delete)  // NEW
 
         exerciseId = intent.getLongExtra(Constants.EXTRA_EXERCISE_ID, -1)
         isLiveMode = exerciseId == -1L
@@ -68,23 +79,65 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
             .findFragmentById(R.id.map) as SupportMapFragment
         mapFragment.getMapAsync(this)
 
+        // Create stats overlay programmatically
+        createStatsOverlay()
+
         if (isLiveMode) startLiveTracking()
         else setupHistoryMode()
 
         setupButtons()
     }
 
-    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
-        if (!isLiveMode) menuInflater.inflate(R.menu.menu_display_entry, menu)
-        return true
+    private fun createStatsOverlay() {
+        // Find the map container
+        val mapContainer = findViewById<ViewGroup>(R.id.map_container)
+
+        // Create the stats overlay container
+        statsOverlayContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 24, 24, 24)
+            setBackgroundColor(Color.parseColor("#CC000000"))
+            elevation = 8f
+        }
+
+        // Create individual stat TextViews
+        tvType = createStatTextView()
+        tvAvgSpeed = createStatTextView()
+        tvCurSpeed = createStatTextView()
+        tvClimb = createStatTextView()
+        tvCalorie = createStatTextView()
+        tvDistance = createStatTextView()
+
+        // Add all TextViews to container
+        statsOverlayContainer.addView(tvType)
+        statsOverlayContainer.addView(tvAvgSpeed)
+        statsOverlayContainer.addView(tvCurSpeed)
+        statsOverlayContainer.addView(tvClimb)
+        statsOverlayContainer.addView(tvCalorie)
+        statsOverlayContainer.addView(tvDistance)
+
+        // Position the overlay in top-left corner
+        val params = ViewGroup.FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            setMargins(16, 16, 16, 16)
+        }
+
+        mapContainer.addView(statsOverlayContainer, params)
+    }
+
+    private fun createStatTextView(): TextView {
+        return TextView(this).apply {
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            setPadding(0, 4, 0, 4)
+        }
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
-            R.id.action_delete -> {
-                confirmDelete()
-                true
-            }
             android.R.id.home -> {
                 finish()
                 true
@@ -93,9 +146,6 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
         }
     }
 
-    // -----------------------------
-    // DELETE ENTRY
-    // -----------------------------
     private fun confirmDelete() {
         AlertDialog.Builder(this)
             .setTitle("Delete Entry")
@@ -113,21 +163,16 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
             .show()
     }
 
-    // -----------------------------
-    // MAP READY - FIXED
-    // -----------------------------
     override fun onMapReady(map: GoogleMap) {
         googleMap = map
         map.uiSettings.apply {
             isZoomControlsEnabled = true
-            // Disable my location button (no blue dot)
             isMyLocationButtonEnabled = false
         }
 
-        // CRITICAL FIX: Disable the blue GPS dot
         if (checkPermission()) {
             try {
-                map.isMyLocationEnabled = false  // Changed to false
+                map.isMyLocationEnabled = false
             } catch (e: SecurityException) {
                 // Permission issue, ignore
             }
@@ -142,17 +187,6 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
         ) == PackageManager.PERMISSION_GRANTED
     }
 
-    private fun requestPermission() {
-        ActivityCompat.requestPermissions(
-            this,
-            arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION),
-            100
-        )
-    }
-
-    // -----------------------------
-    // LIVE MODE
-    // -----------------------------
     private fun startLiveTracking() {
         btnSave.isEnabled = true
 
@@ -190,12 +224,12 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
         }
     }
 
-    // -----------------------------
-    // HISTORY MODE
-    // -----------------------------
     private fun setupHistoryMode() {
         btnSave.visibility = android.view.View.GONE
         btnCancel.visibility = android.view.View.GONE
+        btnDelete.visibility = android.view.View.VISIBLE
+
+        statsOverlayContainer.setBackgroundColor(Color.TRANSPARENT)
     }
 
     private fun loadHistoryEntry() {
@@ -209,9 +243,6 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
         }
     }
 
-    // -----------------------------
-    // STAT FORMATTING
-    // -----------------------------
     private fun updateStats(entry: ExerciseEntry) {
         val type = Constants.ACTIVITY_TYPES[entry.activityType]
         val dist = String.format("%.1f", entry.distance)
@@ -220,31 +251,22 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
         val cal = String.format("%.1f", entry.calorie)
         val cur = String.format("%.1f", lastKnownSpeed)
 
-        val stats = """
-            Type: $type
-            Avg speed: $avg km/h
-            Cur speed: $cur km/h
-            Climb: $climb Kilometers
-            Calorie: $cal
-            Distance: $dist Kilometers
-        """.trimIndent()
+        tvType.text = "Type: $type"
+        tvAvgSpeed.text = "Avg speed: $avg km/h"
+        tvCurSpeed.text = "Cur speed: $cur km/h"
+        tvClimb.text = "Climb: $climb Kilometers"
+        tvCalorie.text = "Calorie: $cal"
+        tvDistance.text = "Distance: $dist Kilometers"
 
-        // black only in live mode
-        tvTypeStats.setBackgroundColor(
-            if (isLiveMode) Color.parseColor("#99000000") else Color.TRANSPARENT
+        statsOverlayContainer.setBackgroundColor(
+            if (isLiveMode) Color.parseColor("#CC000000") else Color.TRANSPARENT
         )
-
-        tvTypeStats.text = stats
     }
 
-    // -----------------------------
-    // LIVE MODE MAP - FIXED ZOOM
-    // -----------------------------
     private fun updateMapLive(entry: ExerciseEntry) {
         val list = LocationUtils.deserializeLocationList(entry.locationList ?: return)
         if (list.size < 1) return
 
-        // Add start marker only once
         if (startMarker == null) {
             startMarker = googleMap?.addMarker(
                 MarkerOptions().position(list.first())
@@ -255,7 +277,6 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
 
         val last = list.last()
 
-        // Update end marker
         endMarker?.remove()
         endMarker = googleMap?.addMarker(
             MarkerOptions().position(last)
@@ -263,13 +284,11 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
                 .title("End")
         )
 
-        // Update polyline
         polyline?.remove()
         polyline = googleMap?.addPolyline(
             PolylineOptions().addAll(list).color(Color.BLUE).width(10f)
         )
 
-        // FIXED: Use same zoom strategy as history mode for consistency
         if (!hasZoomed && list.size >= 2) {
             val builder = LatLngBounds.Builder()
             for (p in list) builder.include(p)
@@ -277,39 +296,31 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
             googleMap?.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, 120))
             hasZoomed = true
         } else if (!hasZoomed && list.size == 1) {
-            // For single point, use zoom level 17
             googleMap?.animateCamera(CameraUpdateFactory.newLatLngZoom(last, 17f))
             hasZoomed = true
         }
     }
 
-    // -----------------------------
-    // HISTORY MAP - CONSISTENT ZOOM
-    // -----------------------------
     private fun drawHistoryRoute(entry: ExerciseEntry) {
         val list = LocationUtils.deserializeLocationList(entry.locationList ?: return)
         if (list.isEmpty()) return
 
-        // Add start marker
         startMarker = googleMap?.addMarker(
             MarkerOptions().position(list.first())
                 .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN))
                 .title("Start")
         )
 
-        // Add end marker
         endMarker = googleMap?.addMarker(
             MarkerOptions().position(list.last())
                 .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED))
                 .title("End")
         )
 
-        // Draw polyline
         polyline = googleMap?.addPolyline(
             PolylineOptions().addAll(list).color(Color.BLUE).width(10f)
         )
 
-        // AUTO FIT ZOOM - same as live mode
         if (list.size >= 2) {
             val builder = LatLngBounds.Builder()
             for (p in list) builder.include(p)
@@ -320,9 +331,6 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
         }
     }
 
-    // -----------------------------
-    // BUTTONS
-    // -----------------------------
     private fun setupButtons() {
         btnSave.setOnClickListener {
             val entry = trackingService?.getCurrentEntry() ?: return@setOnClickListener
@@ -337,6 +345,12 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
             stopTracking()
             finish()
         }
+
+        btnDelete.setOnClickListener {
+            confirmDelete()
+        }
+
+        btnDelete.visibility = android.view.View.GONE
     }
 
     private fun stopTracking() {

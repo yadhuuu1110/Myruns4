@@ -1,46 +1,32 @@
 package com.yadhuChoudhary.MyRuns3
 
-import androidx.lifecycle.LiveData
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 class ExerciseRepository(private val exerciseDao: ExerciseDao) {
 
-    val allExercises: LiveData<List<ExerciseEntry>> = exerciseDao.getAllExercises()
-
-    suspend fun insert(exercise: ExerciseEntry): Long {
-        return withContext(Dispatchers.IO) {
-            exerciseDao.insertExercise(exercise)
-        }
+    suspend fun insert(exercise: ExerciseEntry) = withContext(Dispatchers.IO) {
+        exerciseDao.insert(exercise)
     }
 
-    suspend fun getExerciseById(id: Long): ExerciseEntry? {
-        return withContext(Dispatchers.IO) {
-            exerciseDao.getExerciseById(id)
-        }
+    suspend fun getAllExercises(): List<ExerciseEntry> = withContext(Dispatchers.IO) {
+        exerciseDao.getAllExercises()
     }
 
-    suspend fun delete(exercise: ExerciseEntry) {
-        withContext(Dispatchers.IO) {
-            exerciseDao.deleteExercise(exercise)
-        }
+    suspend fun getExerciseById(id: Long): ExerciseEntry? = withContext(Dispatchers.IO) {
+        exerciseDao.getExerciseById(id)
     }
 
-    suspend fun deleteById(id: Long) {
-        withContext(Dispatchers.IO) {
-            exerciseDao.deleteExerciseById(id)
-        }
+    suspend fun delete(exercise: ExerciseEntry) = withContext(Dispatchers.IO) {
+        exerciseDao.delete(exercise)
     }
 
-    suspend fun update(exercise: ExerciseEntry) {
-        withContext(Dispatchers.IO) {
-            exerciseDao.updateExercise(exercise)
-        }
+    suspend fun update(exercise: ExerciseEntry) = withContext(Dispatchers.IO) {
+        exerciseDao.update(exercise)
     }
 
-    suspend fun deleteAll() {
-        withContext(Dispatchers.IO) {
-            exerciseDao.deleteAllExercises()
-        }
+    // NEW: Delete all records
+    suspend fun deleteAll() = withContext(Dispatchers.IO) {
+        exerciseDao.deleteAll()
     }
 }

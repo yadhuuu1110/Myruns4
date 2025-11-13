@@ -5,5 +5,14 @@
     <color name="button_grey">#A9A9A9</color>
     <color name="teal">#00796B</color>
     <color name="blue">#2196F3</color>
+    <color name="purple_500">#6200EE</color>
+    <color name="purple_700">#3700B3</color>
+
+    <!-- You can customize button colors here -->
+    <color name="button_color">#6200EE</color>
+
+    <!-- Other colors you might need -->
+    <color name="transparent">#00000000</color>
+    <color name="semi_transparent_black">#CC000000</color>
 
 </resources>
