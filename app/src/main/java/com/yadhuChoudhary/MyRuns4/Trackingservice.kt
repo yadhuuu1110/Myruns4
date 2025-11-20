@@ -24,17 +24,11 @@ import kotlin.concurrent.thread
 /**
  * TrackingService - Enhanced with Activity Recognition
  *
- * This service tracks user activities using:
- * - GPS location tracking (for GPS and Automatic modes)
- * - Accelerometer-based activity recognition (for Automatic mode)
- *
- * Activity Recognition Pipeline:
- * 1. Receive accelerometer events (x, y, z)
- * 2. Calculate magnitude: m = sqrt(x² + y² + z²)
- * 3. Buffer 64 consecutive magnitudes
- * 4. Extract features (FFT + max)
- * 5. Classify using embedded Weka classifier
- * 6. Update exercise entry with detected activity
+ * IMPROVEMENTS IN THIS VERSION:
+ * 1. Uses TYPE_ACCELEROMETER (not LINEAR_ACCELERATION) for better compatibility
+ * 2. Implements sliding window smoothing to prevent jittery activity changes
+ * 3. Better emulator support with enhanced logging
+ * 4. Clears activity predictions properly for responsive transitions
  */
 class TrackingService : Service(), SensorEventListener {
 
@@ -45,6 +39,7 @@ class TrackingService : Service(), SensorEventListener {
         const val EXTRA_ACTIVITY_TYPE = "activity_type"
         const val NOTIFICATION_ID = 1
         const val CHANNEL_ID = "tracking_channel"
+        private const val TAG = "TrackingService"
     }
 
     private val binder = LocalBinder()
@@ -56,14 +51,23 @@ class TrackingService : Service(), SensorEventListener {
     // Sensor management for activity recognition
     private var sensorManager: SensorManager? = null
     private var accelerometer: Sensor? = null
+    private var usingLinearAcceleration = false  // Track which sensor type we're using
     private val accelerometerQueue = ArrayBlockingQueue<Double>(1024)
     private var classificationThread: Thread? = null
     private var isClassifying = false
 
+    // For gravity filtering when using TYPE_ACCELEROMETER
+    private val gravity = FloatArray(3)
+    private val alpha = 0.8f  // Low-pass filter constant
+
     // Activity classifier
     private var activityClassifier: ActivityClassifier? = null
     private val activityBuffer = mutableListOf<Double>()
-    private val activityCounts = mutableMapOf<Int, Int>()
+
+    // Sliding window for activity smoothing (keeps last 10 predictions)
+    // This prevents rapid switching between activities
+    private val recentPredictions = mutableListOf<Int>()
+    private val PREDICTION_WINDOW_SIZE = 10
 
     // LiveData for UI updates
     private val _exerciseEntryLiveData = MutableLiveData<ExerciseEntry>()
@@ -99,7 +103,25 @@ class TrackingService : Service(), SensorEventListener {
         super.onCreate()
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+
+        // STRATEGY: Try LINEAR_ACCELERATION first (removes gravity automatically)
+        // Fall back to ACCELEROMETER if not available (we'll remove gravity manually)
         accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
+
+        if (accelerometer != null) {
+            usingLinearAcceleration = true
+            android.util.Log.d(TAG, "✓ Using LINEAR_ACCELERATION sensor (gravity removed): ${accelerometer?.name}")
+        } else {
+            // Fallback to regular accelerometer
+            accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+            usingLinearAcceleration = false
+            android.util.Log.w(TAG, "⚠ LINEAR_ACCELERATION not available, using ACCELEROMETER (will remove gravity manually): ${accelerometer?.name}")
+        }
+
+        if (accelerometer == null) {
+            android.util.Log.e(TAG, "✗ No accelerometer sensors available at all!")
+        }
+
         activityClassifier = ActivityClassifier()
         createNotificationChannel()
     }
@@ -126,7 +148,9 @@ class TrackingService : Service(), SensorEventListener {
         maxAltitude = 0.0
         minAltitude = Double.MAX_VALUE
         isFirstLocationReceived = false
-        activityCounts.clear()
+
+        // Clear activity prediction history
+        recentPredictions.clear()
 
         _currentSpeedLiveData.postValue(0.0)
 
@@ -150,6 +174,7 @@ class TrackingService : Service(), SensorEventListener {
 
         // Start activity recognition if automatic mode
         if (inputType == Constants.INPUT_TYPE_AUTOMATIC) {
+            android.util.Log.d(TAG, "Starting activity recognition in AUTOMATIC mode")
             startActivityRecognition()
         }
 
@@ -162,51 +187,83 @@ class TrackingService : Service(), SensorEventListener {
 
     /**
      * Starts activity recognition using accelerometer
-     * - Registers sensor listener
-     * - Starts background classification thread
+     * IMPROVED: Better sensor registration and logging
      */
     private fun startActivityRecognition() {
         if (accelerometer == null) {
-            android.util.Log.e("TrackingService", "No LINEAR_ACCELERATION sensor available!")
+            android.util.Log.e(TAG, "Cannot start activity recognition - no sensor!")
             return
         }
 
         accelerometerQueue.clear()
         activityBuffer.clear()
+        recentPredictions.clear()
         isClassifying = true
 
         // Register accelerometer listener
-        sensorManager?.registerListener(
+        // CHANGED: Use SENSOR_DELAY_GAME instead of FASTEST for better battery life
+        val registered = sensorManager?.registerListener(
             this,
             accelerometer,
-            SensorManager.SENSOR_DELAY_FASTEST
+            SensorManager.SENSOR_DELAY_GAME
         )
+
+        android.util.Log.d(TAG, "Accelerometer registration: ${if (registered == true) "SUCCESS" else "FAILED"}")
 
         // Start classification thread
         classificationThread = thread {
+            android.util.Log.d(TAG, "Classification thread started")
             while (isClassifying) {
                 try {
                     val reading = accelerometerQueue.take()
                     processAccelerometerReading(reading)
                 } catch (e: InterruptedException) {
+                    android.util.Log.d(TAG, "Classification thread interrupted")
                     break
                 }
             }
+            android.util.Log.d(TAG, "Classification thread stopped")
         }
     }
 
     /**
      * Sensor callback - receives accelerometer data
-     * Called automatically by Android when sensor data is available
+     * IMPROVED: Handles both LINEAR_ACCELERATION and ACCELEROMETER
+     * Removes gravity manually if using regular accelerometer
      */
     override fun onSensorChanged(event: SensorEvent?) {
-        if (event?.sensor?.type == Sensor.TYPE_LINEAR_ACCELERATION) {
-            val x = event.values[0]
-            val y = event.values[1]
-            val z = event.values[2]
+        if (event == null) return
+
+        // Handle both sensor types
+        val isCorrectSensor = (usingLinearAcceleration && event.sensor.type == Sensor.TYPE_LINEAR_ACCELERATION) ||
+                (!usingLinearAcceleration && event.sensor.type == Sensor.TYPE_ACCELEROMETER)
+
+        if (isCorrectSensor) {
+            var x = event.values[0]
+            var y = event.values[1]
+            var z = event.values[2]
+
+            // If using regular accelerometer, remove gravity using low-pass filter
+            if (!usingLinearAcceleration) {
+                // Low-pass filter to isolate gravity
+                gravity[0] = alpha * gravity[0] + (1 - alpha) * x
+                gravity[1] = alpha * gravity[1] + (1 - alpha) * y
+                gravity[2] = alpha * gravity[2] + (1 - alpha) * z
+
+                // Remove gravity to get linear acceleration
+                x -= gravity[0]
+                y -= gravity[1]
+                z -= gravity[2]
+            }
 
             // Calculate magnitude: m = sqrt(x² + y² + z²)
             val magnitude = FeatureExtractor.calculateMagnitude(x, y, z)
+
+            // Log occasionally for debugging (every 100 readings)
+            if (accelerometerQueue.size % 100 == 0) {
+                val sensorType = if (usingLinearAcceleration) "LINEAR" else "ACCEL"
+                android.util.Log.d(TAG, "[$sensorType] x=${"%.2f".format(x)}, y=${"%.2f".format(y)}, z=${"%.2f".format(z)}, mag=${"%.2f".format(magnitude)}, queue=${accelerometerQueue.size}")
+            }
 
             // Add to queue for background processing
             try {
@@ -218,12 +275,12 @@ class TrackingService : Service(), SensorEventListener {
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
-        // Not needed for this implementation
+        android.util.Log.d(TAG, "Sensor accuracy changed: $accuracy")
     }
 
     /**
      * Processes accelerometer readings and performs classification
-     * Runs in background thread
+     * IMPROVED: Uses sliding window for smooth activity transitions
      */
     private fun processAccelerometerReading(magnitude: Double) {
         activityBuffer.add(magnitude)
@@ -238,12 +295,19 @@ class TrackingService : Service(), SensorEventListener {
             // Returns: 0=Standing, 1=Walking, 2=Running
             val predictedActivity = activityClassifier?.classify(features) ?: 0
 
-            // Update activity counts for majority voting
-            activityCounts[predictedActivity] =
-                (activityCounts[predictedActivity] ?: 0) + 1
+            // Add to sliding window
+            recentPredictions.add(predictedActivity)
 
-            // Determine overall activity (most frequent)
+            // Keep only last N predictions (sliding window)
+            if (recentPredictions.size > PREDICTION_WINDOW_SIZE) {
+                recentPredictions.removeAt(0)
+            }
+
+            // Determine overall activity using majority vote from sliding window
+            val activityCounts = recentPredictions.groupingBy { it }.eachCount()
             val dominantActivity = activityCounts.maxByOrNull { it.value }?.key ?: predictedActivity
+
+            android.util.Log.d(TAG, "Prediction: $predictedActivity, Window: $recentPredictions, Dominant: $dominantActivity")
 
             // Map classifier output to app activity types
             // Classifier: 0=Standing, 1=Walking, 2=Running
@@ -262,6 +326,8 @@ class TrackingService : Service(), SensorEventListener {
             val activityLabel = activityClassifier?.getActivityLabel(dominantActivity) ?: "Standing"
             _detectedActivityLiveData.postValue(activityLabel)
 
+            android.util.Log.d(TAG, "Activity updated: $activityLabel (mapped=$mappedActivity)")
+
             // Remove processed readings from buffer
             repeat(FeatureExtractor.BLOCK_CAPACITY) {
                 if (activityBuffer.isNotEmpty()) {
@@ -272,6 +338,7 @@ class TrackingService : Service(), SensorEventListener {
     }
 
     private fun stopActivityRecognition() {
+        android.util.Log.d(TAG, "Stopping activity recognition")
         isClassifying = false
         sensorManager?.unregisterListener(this)
         classificationThread?.interrupt()
@@ -301,7 +368,7 @@ class TrackingService : Service(), SensorEventListener {
                 Looper.getMainLooper()
             )
         } catch (e: SecurityException) {
-            // Handle permission error
+            android.util.Log.e(TAG, "Location permission error: ${e.message}")
         }
     }
 
@@ -313,7 +380,7 @@ class TrackingService : Service(), SensorEventListener {
                 }
             }
         } catch (e: SecurityException) {
-            // Handle permission error
+            android.util.Log.e(TAG, "Location permission error: ${e.message}")
         }
     }
 
@@ -423,6 +490,8 @@ class TrackingService : Service(), SensorEventListener {
     }
 
     private fun stopTracking() {
+        android.util.Log.d(TAG, "Stopping tracking")
+
         locationCallback?.let {
             fusedLocationClient?.removeLocationUpdates(it)
         }
@@ -455,7 +524,7 @@ class TrackingService : Service(), SensorEventListener {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("MyRuns5 Tracking")
+            .setContentTitle("MyRuns4 Tracking")
             .setContentText("Tracking your activity...")
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentIntent(pendingIntent)
@@ -464,6 +533,7 @@ class TrackingService : Service(), SensorEventListener {
     }
 
     override fun onDestroy() {
+        android.util.Log.d(TAG, "Service destroyed")
         locationCallback?.let {
             fusedLocationClient?.removeLocationUpdates(it)
         }
