@@ -1,7 +1,12 @@
 package com.yadhuChoudhary.MyRuns4
+
 import android.app.*
 import android.content.Context
 import android.content.Intent
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.location.Location
 import android.os.Binder
 import android.os.Build
@@ -13,8 +18,25 @@ import androidx.lifecycle.MutableLiveData
 import com.google.android.gms.location.*
 import com.google.android.gms.maps.model.LatLng
 import java.util.*
+import java.util.concurrent.ArrayBlockingQueue
+import kotlin.concurrent.thread
 
-class TrackingService : Service() {
+/**
+ * TrackingService - Enhanced with Activity Recognition
+ *
+ * This service tracks user activities using:
+ * - GPS location tracking (for GPS and Automatic modes)
+ * - Accelerometer-based activity recognition (for Automatic mode)
+ *
+ * Activity Recognition Pipeline:
+ * 1. Receive accelerometer events (x, y, z)
+ * 2. Calculate magnitude: m = sqrt(x² + y² + z²)
+ * 3. Buffer 64 consecutive magnitudes
+ * 4. Extract features (FFT + max)
+ * 5. Classify using embedded Weka classifier
+ * 6. Update exercise entry with detected activity
+ */
+class TrackingService : Service(), SensorEventListener {
 
     companion object {
         const val ACTION_START_TRACKING = "START_TRACKING"
@@ -26,26 +48,41 @@ class TrackingService : Service() {
     }
 
     private val binder = LocalBinder()
+
+    // Location tracking
     private var fusedLocationClient: FusedLocationProviderClient? = null
     private var locationCallback: LocationCallback? = null
 
-    // LiveData for exercise entry
+    // Sensor management for activity recognition
+    private var sensorManager: SensorManager? = null
+    private var accelerometer: Sensor? = null
+    private val accelerometerQueue = ArrayBlockingQueue<Double>(1024)
+    private var classificationThread: Thread? = null
+    private var isClassifying = false
+
+    // Activity classifier
+    private var activityClassifier: ActivityClassifier? = null
+    private val activityBuffer = mutableListOf<Double>()
+    private val activityCounts = mutableMapOf<Int, Int>()
+
+    // LiveData for UI updates
     private val _exerciseEntryLiveData = MutableLiveData<ExerciseEntry>()
     val exerciseEntryLiveData: LiveData<ExerciseEntry> = _exerciseEntryLiveData
 
-    // LiveData for current speed
     private val _currentSpeedLiveData = MutableLiveData<Double>()
     val currentSpeedLiveData: LiveData<Double> = _currentSpeedLiveData
 
+    private val _detectedActivityLiveData = MutableLiveData<String>()
+    val detectedActivityLiveData: LiveData<String> = _detectedActivityLiveData
+
+    // Tracking state
     private var currentEntry: ExerciseEntry? = null
     private val locationList = mutableListOf<LatLng>()
-
     private var startTime: Long = 0
     private var totalDistance: Double = 0.0
     private var lastLocation: Location? = null
     private var maxAltitude: Double = 0.0
     private var minAltitude: Double = Double.MAX_VALUE
-
     private var inputType: Int = Constants.INPUT_TYPE_GPS
     private var activityType: Int = 0
     private var isFirstLocationReceived = false
@@ -61,6 +98,9 @@ class TrackingService : Service() {
     override fun onCreate() {
         super.onCreate()
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
+        activityClassifier = ActivityClassifier()
         createNotificationChannel()
     }
 
@@ -86,11 +126,10 @@ class TrackingService : Service() {
         maxAltitude = 0.0
         minAltitude = Double.MAX_VALUE
         isFirstLocationReceived = false
+        activityCounts.clear()
 
-        // Initialize current speed to 0
         _currentSpeedLiveData.postValue(0.0)
 
-        // Create initial entry with Calendar
         val calendar = Calendar.getInstance()
         calendar.timeInMillis = startTime
 
@@ -109,19 +148,142 @@ class TrackingService : Service() {
 
         startForeground(NOTIFICATION_ID, createNotification())
 
+        // Start activity recognition if automatic mode
+        if (inputType == Constants.INPUT_TYPE_AUTOMATIC) {
+            startActivityRecognition()
+        }
+
+        // Start location updates for GPS and Automatic modes
         if (inputType == Constants.INPUT_TYPE_GPS || inputType == Constants.INPUT_TYPE_AUTOMATIC) {
-            // Get last known location immediately to reduce startup delay
             getLastKnownLocation()
             startLocationUpdates()
         }
     }
 
+    /**
+     * Starts activity recognition using accelerometer
+     * - Registers sensor listener
+     * - Starts background classification thread
+     */
+    private fun startActivityRecognition() {
+        if (accelerometer == null) {
+            android.util.Log.e("TrackingService", "No LINEAR_ACCELERATION sensor available!")
+            return
+        }
+
+        accelerometerQueue.clear()
+        activityBuffer.clear()
+        isClassifying = true
+
+        // Register accelerometer listener
+        sensorManager?.registerListener(
+            this,
+            accelerometer,
+            SensorManager.SENSOR_DELAY_FASTEST
+        )
+
+        // Start classification thread
+        classificationThread = thread {
+            while (isClassifying) {
+                try {
+                    val reading = accelerometerQueue.take()
+                    processAccelerometerReading(reading)
+                } catch (e: InterruptedException) {
+                    break
+                }
+            }
+        }
+    }
+
+    /**
+     * Sensor callback - receives accelerometer data
+     * Called automatically by Android when sensor data is available
+     */
+    override fun onSensorChanged(event: SensorEvent?) {
+        if (event?.sensor?.type == Sensor.TYPE_LINEAR_ACCELERATION) {
+            val x = event.values[0]
+            val y = event.values[1]
+            val z = event.values[2]
+
+            // Calculate magnitude: m = sqrt(x² + y² + z²)
+            val magnitude = FeatureExtractor.calculateMagnitude(x, y, z)
+
+            // Add to queue for background processing
+            try {
+                accelerometerQueue.offer(magnitude)
+            } catch (e: Exception) {
+                // Queue full, skip reading
+            }
+        }
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+        // Not needed for this implementation
+    }
+
+    /**
+     * Processes accelerometer readings and performs classification
+     * Runs in background thread
+     */
+    private fun processAccelerometerReading(magnitude: Double) {
+        activityBuffer.add(magnitude)
+
+        // Process when we have 64 readings (one block)
+        if (activityBuffer.size >= FeatureExtractor.BLOCK_CAPACITY) {
+            // Extract features from the block
+            val block = activityBuffer.take(FeatureExtractor.BLOCK_CAPACITY).toDoubleArray()
+            val features = FeatureExtractor.extractFeatures(block)
+
+            // Classify using embedded Weka classifier
+            // Returns: 0=Standing, 1=Walking, 2=Running
+            val predictedActivity = activityClassifier?.classify(features) ?: 0
+
+            // Update activity counts for majority voting
+            activityCounts[predictedActivity] =
+                (activityCounts[predictedActivity] ?: 0) + 1
+
+            // Determine overall activity (most frequent)
+            val dominantActivity = activityCounts.maxByOrNull { it.value }?.key ?: predictedActivity
+
+            // Map classifier output to app activity types
+            // Classifier: 0=Standing, 1=Walking, 2=Running
+            // Constants: 0=Running, 1=Walking, 2=Standing
+            val mappedActivity = when (dominantActivity) {
+                0 -> Constants.ACTIVITY_TYPE_STANDING  // 2
+                1 -> Constants.ACTIVITY_TYPE_WALKING   // 1
+                2 -> Constants.ACTIVITY_TYPE_RUNNING   // 0
+                else -> Constants.ACTIVITY_TYPE_STANDING
+            }
+
+            // Update current entry with detected activity
+            currentEntry?.activityType = mappedActivity
+
+            // Post activity label for UI
+            val activityLabel = activityClassifier?.getActivityLabel(dominantActivity) ?: "Standing"
+            _detectedActivityLiveData.postValue(activityLabel)
+
+            // Remove processed readings from buffer
+            repeat(FeatureExtractor.BLOCK_CAPACITY) {
+                if (activityBuffer.isNotEmpty()) {
+                    activityBuffer.removeAt(0)
+                }
+            }
+        }
+    }
+
+    private fun stopActivityRecognition() {
+        isClassifying = false
+        sensorManager?.unregisterListener(this)
+        classificationThread?.interrupt()
+        classificationThread = null
+    }
+
     private fun startLocationUpdates() {
         val locationRequest = LocationRequest.create().apply {
-            interval = 1000 // 1 second
-            fastestInterval = 1000 // 1 second
+            interval = 1000
+            fastestInterval = 1000
             priority = LocationRequest.PRIORITY_HIGH_ACCURACY
-            smallestDisplacement = 3f // Only update if moved 3 meters
+            smallestDisplacement = 3f
         }
 
         locationCallback = object : LocationCallback() {
@@ -147,7 +309,6 @@ class TrackingService : Service() {
         try {
             fusedLocationClient?.lastLocation?.addOnSuccessListener { location ->
                 location?.let {
-                    // Use last known location as starting point
                     onLocationUpdate(it)
                 }
             }
@@ -160,16 +321,13 @@ class TrackingService : Service() {
         val latLng = LatLng(location.latitude, location.longitude)
         locationList.add(latLng)
 
-        // Mark that we've received at least one location
         isFirstLocationReceived = true
 
-        // Calculate current speed
         val currentSpeed = if (location.hasSpeed()) {
-            // Convert m/s to mph
             (location.speed * 2.23694).coerceAtLeast(0.0)
         } else if (lastLocation != null) {
-            val distance = lastLocation!!.distanceTo(location) / 1609.34 // miles
-            val timeDiff = (location.time - lastLocation!!.time) / 1000.0 / 3600.0 // hours
+            val distance = lastLocation!!.distanceTo(location) / 1609.34
+            val timeDiff = (location.time - lastLocation!!.time) / 1000.0 / 3600.0
             if (timeDiff > 0) {
                 (distance / timeDiff).coerceAtLeast(0.0)
             } else {
@@ -179,54 +337,44 @@ class TrackingService : Service() {
             0.0
         }
 
-        // Update current speed LiveData
         _currentSpeedLiveData.postValue(currentSpeed)
 
-        // Calculate distance in miles
         if (lastLocation != null) {
             val distanceMeters = lastLocation!!.distanceTo(location)
-            totalDistance += distanceMeters / 1609.34 // Convert to miles
+            totalDistance += distanceMeters / 1609.34
         }
 
-        // Track altitude for climb calculation
         if (location.hasAltitude()) {
-            val altitude = location.altitude * 3.28084 // Convert to feet
+            val altitude = location.altitude * 3.28084
             if (altitude > maxAltitude) maxAltitude = altitude
             if (altitude < minAltitude) minAltitude = altitude
         }
 
         lastLocation = location
-
-        // Update entry
         updateExerciseEntry()
     }
 
     private fun updateExerciseEntry() {
         val currentTime = System.currentTimeMillis()
-        val duration = (currentTime - startTime) / 1000.0 // seconds
+        val duration = (currentTime - startTime) / 1000.0
 
-        // Calculate average speed in mph
         val avgSpeed = if (duration > 0) {
-            (totalDistance / (duration / 3600.0)) // mph
+            (totalDistance / (duration / 3600.0))
         } else {
             0.0
         }
 
-        // Calculate climb in feet
         val climb = if (maxAltitude > 0 && minAltitude < Double.MAX_VALUE) {
             maxAltitude - minAltitude
         } else {
             0.0
         }
 
-        // Calculate calories
-        val calorie = calculateCalories(totalDistance, duration, activityType)
+        val calorie = calculateCalories(totalDistance, duration, currentEntry?.activityType ?: activityType)
 
-        // Create Calendar for dateTime
         val calendar = Calendar.getInstance()
         calendar.timeInMillis = startTime
 
-        // Serialize location list to ByteArray
         val locationListBytes = if (locationList.isNotEmpty()) {
             LocationUtils.serializeLocationList(locationList)
         } else {
@@ -236,7 +384,7 @@ class TrackingService : Service() {
         currentEntry = ExerciseEntry(
             id = currentEntry?.id ?: 0,
             inputType = inputType,
-            activityType = activityType,
+            activityType = currentEntry?.activityType ?: activityType,
             dateTime = calendar,
             duration = duration,
             distance = totalDistance,
@@ -250,7 +398,6 @@ class TrackingService : Service() {
     }
 
     private fun calculateCalories(distance: Double, duration: Double, activityType: Int): Double {
-        // Calories per mile
         val caloriesPerMile = when (activityType) {
             0 -> 100.0  // Running
             1 -> 80.0   // Walking
@@ -265,7 +412,7 @@ class TrackingService : Service() {
             10 -> 75.0  // Mountain Biking
             11 -> 60.0  // Wheelchair
             12 -> 75.0  // Elliptical
-            else -> 80.0 // Other
+            else -> 80.0
         }
 
         return distance * caloriesPerMile
@@ -279,6 +426,8 @@ class TrackingService : Service() {
         locationCallback?.let {
             fusedLocationClient?.removeLocationUpdates(it)
         }
+
+        stopActivityRecognition()
 
         _currentSpeedLiveData.postValue(0.0)
 
@@ -306,7 +455,7 @@ class TrackingService : Service() {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("MyRuns Tracking")
+            .setContentTitle("MyRuns5 Tracking")
             .setContentText("Tracking your activity...")
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentIntent(pendingIntent)
@@ -318,6 +467,7 @@ class TrackingService : Service() {
         locationCallback?.let {
             fusedLocationClient?.removeLocationUpdates(it)
         }
+        stopActivityRecognition()
         super.onDestroy()
     }
 }

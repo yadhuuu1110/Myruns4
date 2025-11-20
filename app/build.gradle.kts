@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.yadhuChoudhary.MyRuns4"
+    namespace = "com.yadhuChoudhary.MyRuns5"
     compileSdk = 36
 
     defaultConfig {
@@ -64,6 +64,10 @@ dependencies {
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+
+    // NOTE: Weka dependency NOT needed!
+    // The WekaClassifier is directly embedded in ActivityClassifier.kt
+    // This saves ~20MB in APK size and eliminates dependency conflicts
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

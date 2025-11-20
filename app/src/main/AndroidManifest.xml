@@ -47,7 +47,7 @@
         <!-- FileProvider declaration -->
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="com.yadhuChoudhary.MyRuns4.fileprovider"
+            android:authorities="com.yadhuChoudhary.MyRuns5.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data
