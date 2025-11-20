@@ -21,7 +21,7 @@
     <!-- Notifications (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- ✅ STORAGE PERMISSIONS -->
+    <!-- STORAGE PERMISSIONS -->
     <!-- For Android 12 and below -->
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
@@ -47,7 +47,7 @@
         <!-- FileProvider declaration -->
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="com.yadhuChoudhary.myruns1.fileprovider"
+            android:authorities="com.yadhuChoudhary.MyRuns4.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data

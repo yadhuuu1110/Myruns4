@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.yadhuChoudhary.MyRuns3"
+    namespace = "com.yadhuChoudhary.MyRuns4"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.yadhuChoudhary.MyRuns3"
+        applicationId = "com.yadhuChoudhary.MyRuns4"
         minSdk = 24
         targetSdk = 36
         versionCode = 1

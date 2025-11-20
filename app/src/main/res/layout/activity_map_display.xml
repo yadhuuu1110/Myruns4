@@ -50,8 +50,6 @@
             android:visibility="gone"
             tools:visibility="visible" />
 
-        <!-- Stats overlay will be added programmatically here -->
-
     </FrameLayout>
 
     <!-- Button Container (SAVE and CANCEL buttons) -->
