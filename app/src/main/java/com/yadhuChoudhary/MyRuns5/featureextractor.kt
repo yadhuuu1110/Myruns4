@@ -63,7 +63,7 @@ object FeatureExtractor {
             im[i] = 0.0
         }
 
-        // Append max as the last feature (index 64)
+        // Append max as the last feature (index 16)
         // This provides time-domain information alongside frequency-domain features
         features[BLOCK_CAPACITY] = max
 
