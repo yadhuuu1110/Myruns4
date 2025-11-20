@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- Toolbar with MyRuns4 title -->
+    <!-- Toolbar with MyRuns5 title -->
     <androidx.appcompat.widget.Toolbar
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
@@ -16,7 +16,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
         app:popupTheme="@style/ThemeOverlay.AppCompat.Light"
-        app:title="MyRuns4"
+        app:title="MyRuns5"
         app:titleTextColor="@android:color/white" />
 
     <!-- Tab Layout -->
