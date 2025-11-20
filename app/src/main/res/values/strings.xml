@@ -65,10 +65,13 @@
         <item>GPS</item>
         <item>Automatic</item>
     </string-array>
+
+    <!-- FIXED: Activity order changed to match classifier output -->
+    <!-- Classifier returns: 0=Standing, 1=Walking, 2=Running -->
     <string-array name="activity">
-        <item>Running</item>
-        <item>Walking</item>
         <item>Standing</item>
+        <item>Walking</item>
+        <item>Running</item>
         <item>Cycling</item>
         <item>Hiking</item>
         <item>Downhill Skiing</item>
@@ -80,7 +83,6 @@
         <item>Wheelchair</item>
         <item>Elliptical</item>
         <item>Other</item>
-
     </string-array>
 
 </resources>

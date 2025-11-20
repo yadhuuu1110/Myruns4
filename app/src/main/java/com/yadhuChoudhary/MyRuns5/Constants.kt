@@ -29,15 +29,11 @@ object Constants {
     /**
      * Array of activity type names for display
      * Index corresponds to activity type ID
-     *
-     * NOTE: Order matters for database storage and display!
-     * The classifier returns 0=Standing, 1=Walking, 2=Running
-     * which gets mapped to these indices by TrackingService
      */
     val ACTIVITY_TYPES = arrayOf(
-        "Running",              // 0
-        "Walking",              // 1
-        "Standing",             // 2
+        "Standing",             // 0 - Matches classifier output 0
+        "Walking",              // 1 - Matches classifier output 1
+        "Running",              // 2 - Matches classifier output 2
         "Cycling",              // 3
         "Hiking",               // 4
         "Downhill Skiing",      // 5
@@ -56,9 +52,9 @@ object Constants {
      * Direct references to activity types for easy code access
      * Used for mapping classifier output to app activity types
      */
-    const val ACTIVITY_TYPE_RUNNING = 0
-    const val ACTIVITY_TYPE_WALKING = 1
-    const val ACTIVITY_TYPE_STANDING = 2
+    const val ACTIVITY_TYPE_STANDING = 0  // Changed from 2 to 0
+    const val ACTIVITY_TYPE_WALKING = 1   // Same
+    const val ACTIVITY_TYPE_RUNNING = 2   // Changed from 0 to 2
     const val ACTIVITY_TYPE_CYCLING = 3
     const val ACTIVITY_TYPE_HIKING = 4
     const val ACTIVITY_TYPE_DOWNHILL_SKIING = 5

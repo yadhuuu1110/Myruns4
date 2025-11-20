@@ -40,16 +40,20 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
     private var currentExercise: ExerciseEntry? = null
     private var lastKnownSpeed = 0.0
     private var isManualEntry = false
+    private var inputType: Int = Constants.INPUT_TYPE_GPS
 
     private var lastUpdateTime = 0L
-    private val UPDATE_INTERVAL_MS = 700L // 0.7 second updates for smoother map rendering
+    private val UPDATE_INTERVAL_MS = 700L
+
+    // This shows what's happening NOW but doesn't affect what gets saved
+    private var currentDetectedActivityLabel: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         exerciseId = intent.getLongExtra(Constants.EXTRA_EXERCISE_ID, -1)
         isLiveMode = exerciseId == -1L
-        val inputType = intent.getIntExtra(Constants.EXTRA_INPUT_TYPE, Constants.INPUT_TYPE_GPS)
+        inputType = intent.getIntExtra(Constants.EXTRA_INPUT_TYPE, Constants.INPUT_TYPE_GPS)
         isManualEntry = inputType == Constants.INPUT_TYPE_MANUAL
 
         if (isManualEntry && !isLiveMode) {
@@ -201,7 +205,6 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
     private fun startLiveTracking() {
         btnSave.isEnabled = true
 
-        val inputType = intent.getIntExtra(Constants.EXTRA_INPUT_TYPE, Constants.INPUT_TYPE_GPS)
         val activityType = intent.getIntExtra(Constants.EXTRA_ACTIVITY_TYPE, 0)
 
         val intent = Intent(this, TrackingService::class.java).apply {
@@ -240,6 +243,15 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
                     updateStats(entry)
                 }
             }
+
+            // CRITICAL FIX: Observe the detected activity label for display only
+            trackingService!!.detectedActivityLiveData.observe(this@MapDisplayActivity) { label ->
+                currentDetectedActivityLabel = label
+                // Refresh stats display with new label
+                trackingService?.getCurrentEntry()?.let { entry ->
+                    updateStats(entry)
+                }
+            }
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -267,7 +279,13 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
     }
 
     private fun updateStats(entry: ExerciseEntry) {
-        val type = Constants.ACTIVITY_TYPES[entry.activityType]
+        val type = if (isLiveMode &&
+            inputType == Constants.INPUT_TYPE_AUTOMATIC &&
+            currentDetectedActivityLabel.isNotEmpty()) {
+            currentDetectedActivityLabel
+        } else {
+            Constants.ACTIVITY_TYPES[entry.activityType]
+        }
 
         val distStr = UnitConverter.formatDistance(entry.distance, this)
 
@@ -305,7 +323,6 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
         val list = LocationUtils.deserializeLocationList(locationBytes)
         if (list.size < 1) return
 
-        // Add start marker
         if (startMarker == null && list.isNotEmpty()) {
             startMarker = googleMap?.addMarker(
                 MarkerOptions().position(list.first())
@@ -316,7 +333,6 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
 
         val last = list.last()
 
-        // Update current position marker
         currentMarker?.remove()
         currentMarker = googleMap?.addMarker(
             MarkerOptions().position(last)
@@ -324,7 +340,6 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
                 .title("Current Position")
         )
 
-        // Update polyline
         polyline?.remove()
         polyline = googleMap?.addPolyline(
             PolylineOptions()
@@ -334,10 +349,9 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
                 .geodesic(true)
         )
 
-        // Smoothly animate camera to current position
         googleMap?.animateCamera(
             CameraUpdateFactory.newLatLngZoom(last, 18f),
-            500,  // 500ms animation for smoother movement
+            500,
             null
         )
     }
@@ -347,7 +361,6 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
         val list = LocationUtils.deserializeLocationList(locationBytes)
         if (list.isEmpty()) return
 
-        // Both markers RED
         startMarker = googleMap?.addMarker(
             MarkerOptions().position(list.first())
                 .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED))
@@ -380,10 +393,14 @@ class MapDisplayActivity : AppCompatActivity(), OnMapReadyCallback {
 
     private fun setupButtons() {
         btnSave.setOnClickListener {
-            // Finalize activity type based on which one was performed longest
+            // This sets the entry's activityType to the activity with longest duration
             trackingService?.finalizeActivityType()
 
             val entry = trackingService?.getCurrentEntry() ?: return@setOnClickListener
+
+            // Log what's being saved for debugging
+            android.util.Log.d("MapDisplay", "Saving entry with activity type: ${entry.activityType} (${Constants.ACTIVITY_TYPES[entry.activityType]})")
+
             lifecycleScope.launch {
                 repository.insert(entry)
                 stopTracking()

@@ -22,16 +22,6 @@ import java.util.*
 import java.util.concurrent.ArrayBlockingQueue
 import kotlin.concurrent.thread
 
-/**
- * OPTIMIZED TrackingService for YOUR MyRuns4 app
- * Works with professor's Globals.kt structure
- *
- * Key optimizations from MyRuns5:
- * 1. Strong gravity filtering (α=0.99)
- * 2. Noise threshold filtering (0.2)
- * 3. Instant 3-sample detection
- * 4. Calibrated thresholds (0.5, 5.0)
- */
 class TrackingService : Service(), SensorEventListener {
 
     companion object {
@@ -43,9 +33,8 @@ class TrackingService : Service(), SensorEventListener {
         const val CHANNEL_ID = "tracking_channel"
         private const val TAG = Globals.TAG
 
-        // 🔥 CRITICAL OPTIMIZATION CONSTANTS
-        private const val NOISE_THRESHOLD = 0.2  // Filter out sensor drift/noise
-        private const val GRAVITY_FILTER_ALPHA = 0.99f  // Very strong gravity filtering
+        private const val NOISE_THRESHOLD = 0.2
+        private const val GRAVITY_FILTER_ALPHA = 0.99f
     }
 
     private val binder = LocalBinder()
@@ -54,7 +43,6 @@ class TrackingService : Service(), SensorEventListener {
     private var fusedLocationClient: FusedLocationProviderClient? = null
     private var locationCallback: LocationCallback? = null
 
-    // Sensor management for activity recognition
     private var sensorManager: SensorManager? = null
     private var accelerometer: Sensor? = null
     private var usingLinearAcceleration = false
@@ -62,32 +50,22 @@ class TrackingService : Service(), SensorEventListener {
     private var classificationThread: Thread? = null
     private var isClassifying = false
 
-    // For gravity filtering when using TYPE_ACCELEROMETER
     private val gravity = FloatArray(3)
-
-    // Emulator detection
     private var runningOnEmulator = false
-
-    // Activity classifier (backup, not used for instant detection)
     private var activityClassifier: ActivityClassifier? = null
 
-    // 🔥 INSTANT DETECTION VARIABLES
     private val recentMagnitudes = ArrayDeque<Double>(3)
     private val MAGNITUDE_WINDOW_SIZE = 3
     private val STANDING_THRESHOLD = 0.5
     private val WALKING_THRESHOLD = 5.0
-    private var currentDisplayedActivity = 0
 
-    // Debug counters
     private var sensorReadingCount = 0
     private var classificationCount = 0
 
-    // Tracks time spent in each activity to determine the dominant one
     private var lastActivityChangeTime: Long = 0
-    private var currentDetectedActivity: Int = Globals.ACTIVITY_ID_STANDING
+    private var currentDetectedActivity: Int = Constants.ACTIVITY_TYPE_STANDING
     private val activityDurations = mutableMapOf<Int, Long>()
 
-    // LiveData for UI updates
     private val _exerciseEntryLiveData = MutableLiveData<ExerciseEntry>()
     val exerciseEntryLiveData: LiveData<ExerciseEntry> = _exerciseEntryLiveData
 
@@ -97,7 +75,6 @@ class TrackingService : Service(), SensorEventListener {
     private val _detectedActivityLiveData = MutableLiveData<String>()
     val detectedActivityLiveData: LiveData<String> = _detectedActivityLiveData
 
-    // Tracking state
     private var currentEntry: ExerciseEntry? = null
     private val locationList = mutableListOf<LatLng>()
     private var startTime: Long = 0
@@ -105,7 +82,7 @@ class TrackingService : Service(), SensorEventListener {
     private var lastLocation: Location? = null
     private var maxAltitude: Double = 0.0
     private var minAltitude: Double = Double.MAX_VALUE
-    private var inputType: Int = 1  // 1 = GPS, 2 = AUTOMATIC (your app's values)
+    private var inputType: Int = 1
     private var activityType: Int = 0
     private var isFirstLocationReceived = false
 
@@ -121,21 +98,13 @@ class TrackingService : Service(), SensorEventListener {
         super.onCreate()
 
         runningOnEmulator = isEmulator()
-        if (runningOnEmulator) {
-            android.util.Log.w(TAG, "WARNING: Running on emulator - activity recognition may not work")
-        } else {
-            android.util.Log.i(TAG, "Running on real device")
-        }
-
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
 
-        // Prefer LINEAR_ACCELERATION if available
         accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
 
         if (accelerometer != null) {
             usingLinearAcceleration = true
-            android.util.Log.d(TAG, "Using LINEAR_ACCELERATION sensor: ${accelerometer?.name}")
         } else {
             accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
             usingLinearAcceleration = false
@@ -164,7 +133,7 @@ class TrackingService : Service(), SensorEventListener {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START_TRACKING -> {
-                inputType = intent.getIntExtra(EXTRA_INPUT_TYPE, 1)  // Default to GPS
+                inputType = intent.getIntExtra(EXTRA_INPUT_TYPE, 1)
                 activityType = intent.getIntExtra(EXTRA_ACTIVITY_TYPE, 0)
                 startTracking()
             }
@@ -184,18 +153,12 @@ class TrackingService : Service(), SensorEventListener {
         minAltitude = Double.MAX_VALUE
         isFirstLocationReceived = false
 
-        // Clear activity detection history
         recentMagnitudes.clear()
-        currentDisplayedActivity = 0
-
-        // Reset debug counters
         sensorReadingCount = 0
         classificationCount = 0
-
-        // Reset activity duration tracking
         activityDurations.clear()
         lastActivityChangeTime = System.currentTimeMillis()
-        currentDetectedActivity = Globals.ACTIVITY_ID_STANDING
+        currentDetectedActivity = Constants.ACTIVITY_TYPE_STANDING
 
         _currentSpeedLiveData.postValue(0.0)
 
@@ -217,17 +180,12 @@ class TrackingService : Service(), SensorEventListener {
 
         startForeground(NOTIFICATION_ID, createNotification())
 
-        // Start activity recognition for automatic mode
-        if (inputType == 2) {  // 2 = AUTOMATIC
-            android.util.Log.d(TAG, "Starting AUTOMATIC mode with activity recognition")
+        if (inputType == Constants.INPUT_TYPE_AUTOMATIC) {
             _detectedActivityLiveData.postValue("Standing")
             startActivityRecognition()
-        } else {
-            android.util.Log.d(TAG, "Starting ${if (inputType == 1) "GPS" else "MANUAL"} mode")
         }
 
-        // Start location updates for GPS and Automatic modes
-        if (inputType == 1 || inputType == 2) {  // GPS or AUTOMATIC
+        if (inputType == Constants.INPUT_TYPE_GPS || inputType == Constants.INPUT_TYPE_AUTOMATIC) {
             getLastKnownLocation()
             startLocationUpdates()
         }
@@ -241,7 +199,6 @@ class TrackingService : Service(), SensorEventListener {
 
         accelerometerQueue.clear()
         recentMagnitudes.clear()
-        currentDisplayedActivity = 0
         isClassifying = true
 
         // Initialize gravity filter to zero
@@ -249,30 +206,21 @@ class TrackingService : Service(), SensorEventListener {
         gravity[1] = 0f
         gravity[2] = 0f
 
-        // 🔥 FASTEST SAMPLING for instant response
-        val registered = sensorManager?.registerListener(
+        sensorManager?.registerListener(
             this,
             accelerometer,
             SensorManager.SENSOR_DELAY_FASTEST
         )
 
-        android.util.Log.d(TAG, "Accelerometer registration: ${if (registered == true) "SUCCESS" else "FAILED"}")
-        android.util.Log.d(TAG, "Using ${if (usingLinearAcceleration) "LINEAR_ACCELERATION" else "ACCELEROMETER with gravity filter"}")
-        android.util.Log.d(TAG, "Noise threshold: $NOISE_THRESHOLD, Gravity alpha: $GRAVITY_FILTER_ALPHA")
-
-        // Start background thread for processing
         classificationThread = thread {
-            android.util.Log.d(TAG, "Classification thread started")
             while (isClassifying) {
                 try {
                     val reading = accelerometerQueue.take()
                     processAccelerometerReading(reading)
                 } catch (e: InterruptedException) {
-                    android.util.Log.d(TAG, "Classification thread interrupted")
                     break
                 }
             }
-            android.util.Log.d(TAG, "Classification thread stopped")
         }
     }
 
@@ -287,7 +235,6 @@ class TrackingService : Service(), SensorEventListener {
             var y = event.values[1]
             var z = event.values[2]
 
-            // 🔥 STRONG GRAVITY FILTERING (if using regular accelerometer)
             if (!usingLinearAcceleration) {
                 gravity[0] = GRAVITY_FILTER_ALPHA * gravity[0] + (1 - GRAVITY_FILTER_ALPHA) * x
                 gravity[1] = GRAVITY_FILTER_ALPHA * gravity[1] + (1 - GRAVITY_FILTER_ALPHA) * y
@@ -298,25 +245,10 @@ class TrackingService : Service(), SensorEventListener {
                 z -= gravity[2]
             }
 
-            // Calculate magnitude
             val rawMagnitude = FeatureExtractor.calculateMagnitude(x, y, z)
-
-            // 🔥 NOISE FILTERING - Critical for eliminating false "walking" detection
             val filteredMagnitude = if (rawMagnitude < NOISE_THRESHOLD) 0.0 else rawMagnitude
 
             sensorReadingCount++
-
-            // Log every 50 readings
-            if (sensorReadingCount % 50 == 0) {
-                val sensorType = if (usingLinearAcceleration) "LINEAR" else "ACCEL"
-                val gravityMag = if (!usingLinearAcceleration) {
-                    " grav=${String.format("%.2f", FeatureExtractor.calculateMagnitude(gravity[0], gravity[1], gravity[2]))}"
-                } else ""
-
-                android.util.Log.d(TAG, "[$sensorType] raw=${String.format("%.3f", rawMagnitude)} " +
-                        "filtered=${String.format("%.3f", filteredMagnitude)}$gravityMag " +
-                        "queue=${accelerometerQueue.size} count=$sensorReadingCount")
-            }
 
             try {
                 if (!accelerometerQueue.offer(filteredMagnitude)) {
@@ -330,19 +262,9 @@ class TrackingService : Service(), SensorEventListener {
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
-        val accuracyStr = when (accuracy) {
-            SensorManager.SENSOR_STATUS_UNRELIABLE -> "UNRELIABLE"
-            SensorManager.SENSOR_STATUS_ACCURACY_LOW -> "LOW"
-            SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM -> "MEDIUM"
-            SensorManager.SENSOR_STATUS_ACCURACY_HIGH -> "HIGH"
-            else -> "UNKNOWN"
-        }
-        android.util.Log.d(TAG, "Sensor accuracy: $accuracyStr ($accuracy)")
     }
 
-    // 🔥 INSTANT THRESHOLD-BASED DETECTION
     private fun processAccelerometerReading(magnitude: Double) {
-        // Rolling 3-sample window
         if (recentMagnitudes.size >= MAGNITUDE_WINDOW_SIZE) {
             recentMagnitudes.removeFirst()
         }
@@ -352,71 +274,30 @@ class TrackingService : Service(), SensorEventListener {
 
         classificationCount++
 
-        // Calculate average magnitude
         val avgMag = recentMagnitudes.average()
 
-        // 🔥 INSTANT THRESHOLD DETECTION
-        // After strong filtering, magnitudes fall into clear ranges:
-        // Standing: 0.0-0.3 m/s²
-        // Walking: 0.5-4.0 m/s²
-        // Running: 5.0+ m/s²
         val detectedActivity = when {
-            avgMag < STANDING_THRESHOLD -> 0  // Standing
-            avgMag < WALKING_THRESHOLD -> 1   // Walking
-            else -> 2                          // Running
+            avgMag < STANDING_THRESHOLD -> Constants.ACTIVITY_TYPE_STANDING
+            avgMag < WALKING_THRESHOLD -> Constants.ACTIVITY_TYPE_WALKING
+            else -> Constants.ACTIVITY_TYPE_RUNNING
         }
 
-        val activityLabels = arrayOf("Standing", "Walking", "Running")
-        val activityLabel = activityLabels[detectedActivity]
+        val activityLabel = Constants.ACTIVITY_TYPES[detectedActivity]
 
-        // Map to professor's Globals constants
-        // Detection: 0=Standing, 1=Walking, 2=Running
-        // Globals:   0=Standing, 1=Walking, 2=Running (SAME!)
-        val mappedActivity = when (detectedActivity) {
-            0 -> Globals.ACTIVITY_ID_STANDING   // 0
-            1 -> Globals.ACTIVITY_ID_WALKING    // 1
-            2 -> Globals.ACTIVITY_ID_RUNNING    // 2
-            else -> Globals.ACTIVITY_ID_STANDING
-        }
-
-        // Track time spent in each activity
         val currentTime = System.currentTimeMillis()
-        if (mappedActivity != currentDisplayedActivity) {
+        if (detectedActivity != currentDetectedActivity) {
             val timeSpent = currentTime - lastActivityChangeTime
-            activityDurations[currentDisplayedActivity] =
-                activityDurations.getOrDefault(currentDisplayedActivity, 0L) + timeSpent
+            activityDurations[currentDetectedActivity] =
+                activityDurations.getOrDefault(currentDetectedActivity, 0L) + timeSpent
 
-            android.util.Log.d(TAG, "⚡ INSTANT Change: ${getActivityName(currentDisplayedActivity)} " +
-                    "→ ${getActivityName(mappedActivity)} (avg=${String.format("%.2f", avgMag)})")
-
-            currentDisplayedActivity = mappedActivity
+            currentDetectedActivity = detectedActivity
             lastActivityChangeTime = currentTime
         }
 
-        // 🔥 INSTANT UI UPDATE
-        currentEntry?.activityType = mappedActivity
         _detectedActivityLiveData.postValue(activityLabel)
-
-        // Log first 30 detections
-        if (classificationCount <= 30) {
-            android.util.Log.d(TAG, "#$classificationCount: avg=${String.format("%.2f", avgMag)} → $activityLabel")
-        } else if (classificationCount % 50 == 0) {
-            android.util.Log.d(TAG, "#$classificationCount: avg=${String.format("%.2f", avgMag)} → $activityLabel")
-        }
-    }
-
-    private fun getActivityName(activityType: Int): String {
-        return when (activityType) {
-            Globals.ACTIVITY_ID_RUNNING -> "Running"
-            Globals.ACTIVITY_ID_WALKING -> "Walking"
-            Globals.ACTIVITY_ID_STANDING -> "Standing"
-            else -> "Unknown"
-        }
     }
 
     private fun stopActivityRecognition() {
-        android.util.Log.d(TAG, "Stopping activity recognition")
-        android.util.Log.d(TAG, "Stats: $sensorReadingCount readings, $classificationCount classifications")
         isClassifying = false
         sensorManager?.unregisterListener(this)
         classificationThread?.interrupt()
@@ -544,9 +425,9 @@ class TrackingService : Service(), SensorEventListener {
 
     private fun calculateCalories(distance: Double, duration: Double, activityType: Int): Double {
         val caloriesPerMile = when (activityType) {
-            0 -> 100.0  // Running/Standing
-            1 -> 80.0   // Walking
-            2 -> 100.0  // Running
+            Constants.ACTIVITY_TYPE_STANDING -> 50.0
+            Constants.ACTIVITY_TYPE_WALKING -> 80.0
+            Constants.ACTIVITY_TYPE_RUNNING -> 100.0
             else -> 80.0
         }
         return distance * caloriesPerMile
@@ -557,7 +438,7 @@ class TrackingService : Service(), SensorEventListener {
     }
 
     fun finalizeActivityType() {
-        if (inputType == 2) {  // AUTOMATIC mode
+        if (inputType == Constants.INPUT_TYPE_AUTOMATIC) {
             val currentTime = System.currentTimeMillis()
             val finalTimeSpent = currentTime - lastActivityChangeTime
             activityDurations[currentDetectedActivity] =
@@ -567,29 +448,17 @@ class TrackingService : Service(), SensorEventListener {
 
             if (dominantActivity != null) {
                 currentEntry?.activityType = dominantActivity
-
-                android.util.Log.d(TAG, "Activity Duration Summary:")
-                activityDurations.entries.sortedByDescending { it.value }.forEach { (activityType, duration) ->
-                    val seconds = duration / 1000.0
-                    val minutes = seconds / 60.0
-                    android.util.Log.d(TAG, "   ${getActivityName(activityType)}: ${String.format("%.1f", seconds)}s (${String.format("%.1f", minutes)}m)")
-                }
-                android.util.Log.d(TAG, "Dominant activity: ${getActivityName(dominantActivity)} - saving as final activity type")
-
                 updateExerciseEntry()
             }
         }
     }
 
     private fun stopTracking() {
-        android.util.Log.d(TAG, "Stopping tracking")
-
         locationCallback?.let {
             fusedLocationClient?.removeLocationUpdates(it)
         }
 
         stopActivityRecognition()
-
         _currentSpeedLiveData.postValue(0.0)
 
         stopForeground(true)
@@ -625,7 +494,6 @@ class TrackingService : Service(), SensorEventListener {
     }
 
     override fun onDestroy() {
-        android.util.Log.d(TAG, "Service destroyed")
         locationCallback?.let {
             fusedLocationClient?.removeLocationUpdates(it)
         }
